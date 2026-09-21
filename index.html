@@ -89,6 +89,9 @@
   .hm{fill:#fff;stroke:var(--accent)}
   .cutprev{fill:none;stroke:#ff4d8d;stroke-dasharray:5 4;pointer-events:none}
   .seed{fill:#ffb020;stroke:#000}
+  .tgroup{display:inline-flex;align-items:center;gap:4px;padding:1px 6px 1px 1px;border:1px solid var(--line);border-radius:8px}
+  .tlabel{font-size:11px;color:var(--muted)}
+  .tval{font-size:11px;color:var(--muted);width:14px}
   .rimseed{fill:#fff;stroke:var(--accent)}
   .rimseed.bad{fill:#ff4d4d;stroke:#fff}
   #ov.bucket{cursor:copy}
@@ -161,6 +164,7 @@
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
         <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、そのまわりの<b>塗った黒だけ</b>を輪郭に沿って細く削り、白いフチにする（黒く塗ったまわりで輪郭が分からなくなるとき）。枠線や絵の黒は削らない。黒いフキダシは黒い所をクリック。赤い点＝形が見つからなかった</span></div>
+        <div><span class="k">「はみ出しに白フチ」</span><span>選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど。中が白でもトーンでもよい）に、まとめて白フチを付ける。いらないものは白フチの道具で option＋クリック</span></div>
         <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
         <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
@@ -199,9 +203,13 @@
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
-      <button id="btnRim" class="mini" title="フキダシの中をクリックすると、まわりの塗った黒だけを輪郭に沿って細く削って、白いフチにする（黒いフキダシは黒い所をクリック。option＋クリックで取り消し）">白フチ</button>
+      <span class="tgroup">
+        <button id="btnRim" class="mini" title="フキダシや花びらの中をクリックすると、まわりの塗った黒だけを輪郭に沿って細く削って、白いフチにする（黒いフキダシは黒い所をクリック。option＋クリックで取り消し）">白フチ</button>
+        <button id="btnAutoRim" class="mini" title="選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど）に、まとめて白フチを付ける">はみ出しに白フチ</button>
+        <span class="tlabel">太さ</span><input type="range" id="rimW" min="1" max="12" value="3" style="width:56px" title="白フチの太さ（プレビューのpx。書き出しでは原寸に合わせて太くなる）"><span class="tval" id="vRimW">3</span>
+      </span>
       <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
-      <input type="range" id="eraseSize" min="4" max="60" value="14" style="width:60px" title="消しゴムの大きさ">
+      <span class="tlabel">大きさ</span><input type="range" id="eraseSize" min="4" max="60" value="14" style="width:56px" title="消しゴムの大きさ">
       <button id="btnRect" class="mini">四角にする</button>
       <button id="btnDetect" class="mini">このページを再検出</button>
       <button id="btnClearShapes" class="mini warn">コマを全部消す</button>
@@ -242,7 +250,6 @@
       <div class="row" title="コマの枠線のどこで切り抜くか"><span>切る位置</span>
         <select id="cutPos" style="flex:1"><option value="in" selected>枠線の内側（線を含めない）</option><option value="mid">枠線の中央</option><option value="out">枠線の外側（線を含める）</option></select>
       </div>
-      <div class="row" title="白フチの道具で付ける白い帯の太さ（プレビューのpx。書き出しでは原寸に合わせて太くなる）"><span>白フチの太さ</span><input type="range" id="rimW" min="1" max="12" value="3"><span class="v" id="vRimW">3</span></div>
       <div class="row"><span>コマ外の塗り</span>
         <select id="fill" style="flex:1"><option value="#000000">黒</option><option value="#ffffff">白</option><option value="none">透明（PNGのみ）</option></select>
       </div>
@@ -548,52 +555,148 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
    od は塗る前の絵。返り値は { x0, y0, w, h, halo }（フキダシのまわりだけの窓）。
    形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
 function rimHalo(od, W, H, sx, sy, r, rimW){
-  const N = W*H, d = od.data, X = Math.round(sx), Y = Math.round(sy);
+  const d = od.data, X = Math.round(sx), Y = Math.round(sy);
   if (X < 0 || Y < 0 || X >= W || Y >= H) return null;
   const lum = i => (d[i*4]*299 + d[i*4+1]*587 + d[i*4+2]*114) / 1000;
-  const white = lum(Y*W + X) >= 128;                 // 白いフキダシの中をクリックしたか、黒いフキダシか
-  // 1) クリックした所から中をたどる（白いフキダシは、輪郭のすき間から漏れないよう黒を少し太らせて）
-  const base = new Uint8Array(N);
-  for (let i = 0; i < N; i++) { const v = lum(i); base[i] = white ? (v >= 200 ? 1 : 0) : (v < 128 ? 1 : 0); }
-  let pass = base;
-  if (white) {
-    const dk = new Uint8Array(N); for (let i = 0; i < N; i++) dk[i] = base[i] ? 0 : 1;
-    const wall = dilateMask(dk, W, H, r);
-    pass = new Uint8Array(N); for (let i = 0; i < N; i++) pass[i] = base[i] && !wall[i] ? 1 : 0;
+  const white = lum(Y*W + X) >= 128;                 // 白い中をクリックしたか、黒いフキダシか
+  // 1) クリックした所から中をたどる。まわりの小さな窓から始め、形が窓の端に届いたら窓を広げる
+  //    （花びらなどが多いと、全体で毎回計算するのは重いので）
+  let hs = 60 * r, reg, x0, y0, w, h;
+  for (;;) {
+    x0 = Math.max(0, X - hs); y0 = Math.max(0, Y - hs);
+    const x1 = Math.min(W, X + hs + 1), y1 = Math.min(H, Y + hs + 1);
+    w = x1 - x0; h = y1 - y0;
+    const n = w*h, base = new Uint8Array(n);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const v = lum((y + y0)*W + x + x0); base[y*w + x] = white ? (v >= 200 ? 1 : 0) : (v < 128 ? 1 : 0);
+    }
+    let pass = base;
+    if (white) {                                      // 輪郭のすき間から漏れないよう、黒を少し太らせる
+      const dk = new Uint8Array(n); for (let i = 0; i < n; i++) dk[i] = base[i] ? 0 : 1;
+      const wall = dilateMask(dk, w, h, r);
+      pass = new Uint8Array(n); for (let i = 0; i < n; i++) pass[i] = base[i] && !wall[i] ? 1 : 0;
+    }
+    reg = floodFrom(pass, w, h, false, [[X - x0, Y - y0]], 3*r + 2);
+    let touch = false;
+    for (let x = 0; x < w && !touch; x++) if ((reg[x] && y0 > 0) || (reg[(h-1)*w + x] && y1 < H)) touch = true;
+    for (let y = 0; y < h && !touch; y++) if ((reg[y*w] && x0 > 0) || (reg[y*w + w - 1] && x1 < W)) touch = true;
+    if (!touch || (w === W && h === H)) break;
+    hs *= 2;
   }
-  const reg = floodFrom(pass, W, H, false, [[sx, sy]], 3*r + 2);
-  let area = 0, bx1 = W, by1 = H, bx2 = 0, by2 = 0;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (reg[y*W + x]) {
+  let area = 0, bx1 = w, by1 = h, bx2 = 0, by2 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (reg[y*w + x]) {
     area++; if (x < bx1) bx1 = x; if (x > bx2) bx2 = x; if (y < by1) by1 = y; if (y > by2) by2 = y;
   }
-  // 漏れの判定：形が全体の60%を超えるか、3辺以上に接している（外へ漏れて広がった）
-  const sides = (bx1 === 0) + (by1 === 0) + (bx2 === W-1) + (by2 === H-1);
-  if (!area || area > 0.6 * N || sides >= 3) return null;
-  // 2) ここからはフキダシのまわりの窓だけで計算する
+  // 漏れの判定：形が全体の60%を超えるか、全体の3辺以上に接している（外へ漏れて広がった）
+  const sides = (bx1 + x0 === 0) + (by1 + y0 === 0) + (bx2 + x0 === W-1) + (by2 + y0 === H-1);
+  if (!area || area > 0.6 * W * H || sides >= 3) return null;
+  // 2) 形のまわりの窓で、穴埋め・輪郭たどり・帯
   const K = 6*r + 4, pad = r + K + rimW + 2;
-  const x0 = Math.max(0, bx1 - pad), y0 = Math.max(0, by1 - pad), x1 = Math.min(W, bx2 + pad + 1), y1 = Math.min(H, by2 + pad + 1);
-  const w = x1 - x0, h = y1 - y0, n = w*h;
-  const R = new Uint8Array(n), dark = new Uint8Array(n);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const gi = (y + y0)*W + (x + x0);
-    R[y*w + x] = reg[gi]; dark[y*w + x] = lum(gi) < 200 ? 1 : 0;
+  const gx0 = Math.max(0, bx1 + x0 - pad), gy0 = Math.max(0, by1 + y0 - pad);
+  const gx1 = Math.min(W, bx2 + x0 + pad + 1), gy1 = Math.min(H, by2 + y0 + pad + 1);
+  const ww = gx1 - gx0, hh = gy1 - gy0, nn = ww*hh;
+  const R = new Uint8Array(nn), dark = new Uint8Array(nn);
+  for (let y = 0; y < hh; y++) for (let x = 0; x < ww; x++) {
+    const gx = x + gx0, gy = y + gy0, lx = gx - x0, ly = gy - y0;
+    R[y*ww + x] = lx >= 0 && ly >= 0 && lx < w && ly < h ? reg[ly*w + lx] : 0;
+    dark[y*ww + x] = lum(gy*W + gx) < 200 ? 1 : 0;
   }
-  // 中の文字などの穴を埋める：窓の外からたどれなかった所＝形の中
-  const rest = new Uint8Array(n); for (let i = 0; i < n; i++) rest[i] = R[i] ? 0 : 1;
-  const outside = floodFrom(rest, w, h, true, [], 0);
-  let shape = new Uint8Array(n); for (let i = 0; i < n; i++) shape[i] = outside[i] ? 0 : 1;
-  if (white) shape = dilateMask(shape, w, h, r);     // 太らせた壁の分を戻す
-  // 3) 輪郭線を最後までたどる：形のとなりの「元の絵の黒」へ、1pxずつ広げる（K px まで）
-  for (let t = 0; t < K; t++) {
-    const g1 = dilateMask(shape, w, h, 1);
+  const rest = new Uint8Array(nn); for (let i = 0; i < nn; i++) rest[i] = R[i] ? 0 : 1;
+  const outside = floodFrom(rest, ww, hh, true, [], 0);      // 窓の外からたどれなかった所＝形の中（文字の穴も）
+  let shape = new Uint8Array(nn); for (let i = 0; i < nn; i++) shape[i] = outside[i] ? 0 : 1;
+  if (white) shape = dilateMask(shape, ww, hh, r);            // 太らせた壁の分を戻す
+  for (let t = 0; t < K; t++) {                               // 輪郭線（元の絵の黒）を最後までたどる
+    const g1 = dilateMask(shape, ww, hh, 1);
     let grew = false;
-    for (let i = 0; i < n; i++) if (g1[i] && !shape[i] && dark[i]) { shape[i] = 1; grew = true; }
+    for (let i = 0; i < nn; i++) if (g1[i] && !shape[i] && dark[i]) { shape[i] = 1; grew = true; }
     if (!grew) break;
   }
-  // 4) その外側 rimW px が、削る帯
-  const grown = dilateMask(shape, w, h, rimW);
-  const halo = new Uint8Array(n); for (let i = 0; i < n; i++) halo[i] = grown[i] && !shape[i] ? 1 : 0;
-  return { x0, y0, w, h, halo };
+  const grown = dilateMask(shape, ww, hh, rimW);             // その外側 rimW px が、削る帯
+  const halo = new Uint8Array(nn); for (let i = 0; i < nn; i++) halo[i] = grown[i] && !shape[i] ? 1 : 0;
+  return { x0: gx0, y0: gy0, w: ww, h: hh, halo };
+}
+
+/* コマの中と、その枠線のまわり pad px を 1 にしたマスク。はみ出したものを、コマの絵から切り離して見るため */
+function blockMask(polys, ox, oy, w, h, pad, pageW, pageH){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = g.strokeStyle = '#000'; g.lineWidth = 2*pad; g.lineJoin = 'round';
+  // ページの外も壁（端で切れた花びらが、ページの外とつながって島にならないのを防ぐ）
+  g.fillRect(0, 0, w, h); g.clearRect(-ox, -oy, pageW, pageH);
+  polys = polys || [];
+  for (const P of polys) { g.beginPath(); P.forEach((q, j) => j ? g.lineTo(q[0]-ox, q[1]-oy) : g.moveTo(q[0]-ox, q[1]-oy)); g.closePath(); g.fill(); g.stroke(); }
+  const d = g.getImageData(0, 0, w, h).data, m = new Uint8Array(w*h);
+  for (let i = 0; i < w*h; i++) m[i] = d[i*4+3] > 127 ? 1 : 0;
+  c.width = c.height = 0;
+  return m;
+}
+
+/* 塗った黒の中に島のように残った「塗られていない所」（はみ出した花びらなど）。
+   d：塗ったあと、od：塗る前。クリックした点を含む島を返す。端に触れる・大きすぎる（コマの絵につながっている）ときは null */
+function islandAt(d, od, w, h, X, Y, limit, block){
+  const isP = i => { if (block && block[i]) return true; const q = i*4; return d[q] !== od[q] || d[q+1] !== od[q+1] || d[q+2] !== od[q+2] || d[q+3] !== od[q+3]; };
+  X = Math.round(X); Y = Math.round(Y);
+  let start = -1;
+  for (let rr = 0; rr <= 3 && start < 0; rr++)
+    for (let dy = -rr; dy <= rr && start < 0; dy++) for (let dx = -rr; dx <= rr; dx++) {
+      const x = X + dx, y = Y + dy;
+      if (x >= 0 && y >= 0 && x < w && y < h && !isP(y*w + x)) { start = y*w + x; break; }
+    }
+  if (start < 0) return null;
+  const seen = new Map(), st = [start]; seen.set(start, 1);
+  let bx1 = w, by1 = h, bx2 = 0, by2 = 0;
+  while (st.length) {
+    const i = st.pop(), x = i % w, y = (i / w) | 0;
+    if (x === 0 || y === 0 || x === w-1 || y === h-1) return null;
+    if (seen.size > limit) return null;
+    if (x < bx1) bx1 = x; if (x > bx2) bx2 = x; if (y < by1) by1 = y; if (y > by2) by2 = y;
+    for (const j of [i-1, i+1, i-w, i+w]) if (!seen.has(j) && !isP(j)) { seen.set(j, 1); st.push(j); }
+  }
+  return { cells: seen, bx1, by1, bx2, by2 };
+}
+
+/* 「はみ出しに白フチ」：塗った黒の中に島のように残ったもの（はみ出した花びらなど）を見つけて、白フチの点を返す（ページ比） */
+function findRimTargets(p, s){
+  const keep = s.rims; s.rims = [];
+  const pp = paintedPreview(p, s);
+  s.rims = keep;
+  const E = pp.img, w = E.width, h = E.height, ox = pp.x - 8, oy = pp.y - 8;
+  const cur = E.getContext('2d').getImageData(0, 0, w, h).data;
+  const oc = document.createElement('canvas'); oc.width = w; oc.height = h;
+  const og = oc.getContext('2d'); og.fillStyle = '#000'; og.fillRect(0, 0, w, h);
+  og.drawImage(p.pv, ox, oy, w, h, 0, 0, w, h);
+  const od = og.getImageData(0, 0, w, h).data;
+  const n = w*h, freeM = new Uint8Array(n);
+  const prot = protectPx(p, s, p.pv.width, p.pv.height);
+  const block = blockMask(prot, ox, oy, w, h, 6, p.pv.width, p.pv.height);
+  for (let i = 0, q = 0; i < n; i++, q += 4)                   // 塗られていなくて、コマ（と枠線のまわり）の外
+    freeM[i] = cur[q] === od[q] && cur[q+1] === od[q+1] && cur[q+2] === od[q+2] && !(block && block[i]) ? 1 : 0;
+  const seen = new Uint8Array(n), out = [];
+  for (let i0 = 0; i0 < n; i0++) {
+    if (!freeM[i0] || seen[i0]) continue;
+    // 塗られていない所を1つたどる。端に触れず、小さい＝塗った黒に囲まれた島
+    const st = [i0]; seen[i0] = 1;
+    let size = 0, touchEdge = false, sx = 0, sy = 0;
+    const cells = [];
+    while (st.length) {
+      const i = st.pop(), x = i % w, y = (i / w) | 0;
+      size++; sx += x; sy += y; cells.push(i);
+      if (x === 0 || y === 0 || x === w-1 || y === h-1) touchEdge = true;
+      for (const j of [i-1, i+1, i-w, i+w]) {
+        if (j < 0 || j >= n || seen[j] || !freeM[j]) continue;
+        if ((j === i-1 && x === 0) || (j === i+1 && x === w-1)) continue;
+        seen[j] = 1; st.push(j);
+      }
+    }
+    if (touchEdge || size < 30 || size > 0.05 * n) continue;
+    // 島の中の点：重心にいちばん近い、島の画素
+    const cx = sx / size, cy = sy / size;
+    let pi = cells[0], bd = Infinity;
+    for (const i of cells) { const dx = i % w - cx, dy = ((i / w) | 0) - cy, dd = dx*dx + dy*dy; if (dd < bd) { bd = dd; pi = i; } }
+    const px = (pi % w) + ox, py = ((pi / w) | 0) + oy;
+    if (prot.some(P => pointInPoly(px, py, P))) continue;      // 守ったコマの中は対象外
+    out.push([px / p.pv.width, py / p.pv.height]);
+  }
+  return out;
 }
 /* 手で足した塗り。座標はページのpx。g のキャンバスの (0,0) が、ページの (ox,oy)。
    ほかのコマとの重なり（polys）→ 四角で塗る（rects）→ 白フチ（rims）→ 最後に消しゴム（erase）で元の絵に戻す。
@@ -615,7 +718,25 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
   // 枠線や絵の黒は塗ったものではないので、そのまま残る
   if (man.rims.length && orig) {
     const img = g.getImageData(0, 0, cw, ch), d = img.data, od = orig.data;
+    const painted0 = new Uint8ClampedArray(d);             // 白フチで削る前の、塗った状態
+    const block = blockMask(man.block, ox, oy, cw, ch, man.blockPad, man.pageW, man.pageH);
     man.rims.forEach(([x, y], k) => {
+      // まず、塗った黒に囲まれた島（はみ出した花びらなど）か。島なら、その輪郭に沿って削る
+      const isl = islandAt(painted0, od, cw, ch, x - ox, y - oy, 0.05 * cw * ch, block);
+      if (isl) {
+        const pad = man.rimW + 1, gx0 = Math.max(0, isl.bx1 - pad), gy0 = Math.max(0, isl.by1 - pad);
+        const ww = Math.min(cw, isl.bx2 + pad + 1) - gx0, hh = Math.min(ch, isl.by2 + pad + 1) - gy0;
+        const m = new Uint8Array(ww*hh);
+        for (const i of isl.cells.keys()) m[(((i / cw) | 0) - gy0)*ww + (i % cw) - gx0] = 1;
+        const g2 = dilateMask(m, ww, hh, man.rimW);
+        for (let yy = 0; yy < hh; yy++) for (let xx = 0; xx < ww; xx++) {
+          const li = yy*ww + xx; if (!g2[li] || m[li]) continue;
+          const p = ((yy + gy0)*cw + xx + gx0) * 4;
+          d[p] = od[p]; d[p+1] = od[p+1]; d[p+2] = od[p+2]; d[p+3] = od[p+3];
+        }
+        return;
+      }
+      // 島でなければ（コマの中までつながったフキダシなど）、中をたどって形を取る
       const rh = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
       if (!rh) { failed.push(k); return; }
       for (let yy = 0; yy < rh.h; yy++) for (let xx = 0; xx < rh.w; xx++) {
@@ -689,6 +810,10 @@ const manualPx = (list, W, H, p) => ({
   rects: list.flatMap(s => (s.rects || []).map(r => [r[0]*W, r[1]*H, r[2]*W, r[3]*H])),
   rims:  list.flatMap(s => (s.rims || []).map(q => [q[0]*W, q[1]*H])),
   rimW:  Math.max(1, Math.round(+$('#rimW').value * W / p.pv.width)),
+  // はみ出しを見るときの壁：1コマなら「枠外」で見つけた中のコマ、つないだコマならそれぞれのコマ
+  block: list.length === 1 ? protectPx(p, list[0], W, H) : list.map(o => o.poly.map(q => [q[0]*W, q[1]*H])),
+  blockPad: Math.max(2, Math.round(6 * W / p.pv.width)),
+  pageW: W, pageH: H,
   erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W]))
 });
 
@@ -1883,6 +2008,21 @@ $('#btnBucket').onclick = () => setTool('bucket');
 $('#btnErase').onclick = () => setTool('erase');
 $('#btnPaintRect').onclick = () => setTool('prect');
 $('#btnRim').onclick = () => setTool('rim');
+$('#btnAutoRim').onclick = () => {
+  const p = pages[cur];
+  if (!p || sel < 0) { alert('先に、白フチを付けたいコマを選んでください'); return; }
+  const s = p.shapes[sel];
+  if (!needsPaint(p, s)) { alert('このコマはまだ塗っていません。先に「枠外」やバケツで塗ってください'); return; }
+  busy(true, 'はみ出したものをさがしています…');
+  setTimeout(() => {
+    const found = findRimTargets(p, s);
+    const W = p.pv.width, H = p.pv.height;
+    const fresh = found.filter(q => !(s.rims || []).some(e => Math.hypot((e[0]-q[0])*W, (e[1]-q[1])*H) < 6));
+    if (fresh.length) { snap(); s.rims = (s.rims || []).concat(fresh); }
+    renderShapes(); renderPanelList(); busy(false);
+    if (!fresh.length) alert('白フチを付けるものが見つかりませんでした');
+  }, 30);
+};
 $('#rimW').oninput = e => { $('#vRimW').textContent = e.target.value; renderShapes(); renderPanelList(); };
 $('#btnRect').onclick = () => {
   const p = pages[cur]; if (!p || sel < 0) return;
