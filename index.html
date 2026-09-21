@@ -666,7 +666,9 @@ function findRimTargets(p, s){
   og.drawImage(p.pv, ox, oy, w, h, 0, 0, w, h);
   const od = og.getImageData(0, 0, w, h).data;
   const n = w*h, freeM = new Uint8Array(n);
-  const prot = protectPx(p, s, p.pv.width, p.pv.height);
+  s._findingRims = true;
+  const prot = rimBlockPx(p, s, p.pv.width, p.pv.height);
+  s._findingRims = false;
   const block = blockMask(prot, ox, oy, w, h, 6, p.pv.width, p.pv.height);
   for (let i = 0, q = 0; i < n; i++, q += 4)                   // 塗られていなくて、コマ（と枠線のまわり）の外
     freeM[i] = cur[q] === od[q] && cur[q+1] === od[q+1] && cur[q+2] === od[q+2] && !(block && block[i]) ? 1 : 0;
@@ -780,6 +782,8 @@ function subPanels(p, s){
   return polys;
 }
 const protectPx = (p, s, W, H) => s.gut ? subPanels(p, s).map(P => P.map(q => [q[0]*W, q[1]*H])) : [];
+/* 白フチではみ出しを見るときの壁：「枠外」のオン・オフに関係なく、コマの中のコマ（白フチがあるときだけ探す） */
+const rimBlockPx = (p, s, W, H) => (s.rims && s.rims.length) || s._findingRims ? subPanels(p, s).map(P => P.map(q => [q[0]*W, q[1]*H])) : [];
 
 const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length) || (s.rims && s.rims.length);
 const seedsPx = (s, W, H) => (s.seeds || []).map(q => [q[0]*W, q[1]*H]);
@@ -811,7 +815,7 @@ const manualPx = (list, W, H, p) => ({
   rims:  list.flatMap(s => (s.rims || []).map(q => [q[0]*W, q[1]*H])),
   rimW:  Math.max(1, Math.round(+$('#rimW').value * W / p.pv.width)),
   // はみ出しを見るときの壁：1コマなら「枠外」で見つけた中のコマ、つないだコマならそれぞれのコマ
-  block: list.length === 1 ? protectPx(p, list[0], W, H) : list.map(o => o.poly.map(q => [q[0]*W, q[1]*H])),
+  block: list.length === 1 ? rimBlockPx(p, list[0], W, H) : list.map(o => o.poly.map(q => [q[0]*W, q[1]*H])),
   blockPad: Math.max(2, Math.round(6 * W / p.pv.width)),
   pageW: W, pageH: H,
   erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W]))
