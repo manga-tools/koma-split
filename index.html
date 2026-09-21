@@ -547,6 +547,7 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
   const orig = man && man.rims.length ? g.getImageData(0, 0, E.width, E.height) : null;
   if (edges || seeds.length)
     paintGutters(g, E.width, E.height, protect.map(P => P.map(q => [q[0] - x + m, q[1] - y + m])), r, fill, !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
+  if (man) man.bounds = [m, m, m + w, m + h];
   E.rimFailed = applyManual(g, x - m, y - m, src, man, fill, orig, r);
   return E;
 }
@@ -554,11 +555,17 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
 /* 白フチ：クリックした所から、フキダシ（や黒いフキダシ）の形をたどって、そのまわりの帯（削る所）を返す。
    od は塗る前の絵。返り値は { x0, y0, w, h, halo }（フキダシのまわりだけの窓）。
    形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
-function rimHalo(od, W, H, sx, sy, r, rimW){
+function rimHalo(od, W, H, sx, sy, r, rimW, bounds, tone){
   const d = od.data, X = Math.round(sx), Y = Math.round(sy);
   if (X < 0 || Y < 0 || X >= W || Y >= H) return null;
-  const lum = i => (d[i*4]*299 + d[i*4+1]*587 + d[i*4+2]*114) / 1000;
-  const white = lum(Y*W + X) >= 128;                 // 白い中をクリックしたか、黒いフキダシか
+  const [cx1, cy1, cx2, cy2] = bounds || [0, 0, W, H];
+  const out_ = (x, y) => x < cx1 || y < cy1 || x >= cx2 || y >= cy2;
+  // tone：中にトーンが貼ってあっても通れるように、明るめのグレーも「中」とみなす（花びらなど）
+  const WT = tone ? 128 : 200;
+  const lumRaw = i => (d[i*4]*299 + d[i*4+1]*587 + d[i*4+2]*114) / 1000;
+  // 切り抜く範囲の外は黒＝壁（範囲の外の白とつながらないように）
+  const lum = i => out_(i % W, (i / W) | 0) ? 0 : lumRaw(i);
+  const white = lumRaw(Y*W + X) >= 128;              // 白い中をクリックしたか、黒いフキダシか
   // 1) クリックした所から中をたどる。まわりの小さな窓から始め、形が窓の端に届いたら窓を広げる
   //    （花びらなどが多いと、全体で毎回計算するのは重いので）
   let hs = 60 * r, reg, x0, y0, w, h;
@@ -568,11 +575,14 @@ function rimHalo(od, W, H, sx, sy, r, rimW){
     w = x1 - x0; h = y1 - y0;
     const n = w*h, base = new Uint8Array(n);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const v = lum((y + y0)*W + x + x0); base[y*w + x] = white ? (v >= 200 ? 1 : 0) : (v < 128 ? 1 : 0);
+      const v = lum((y + y0)*W + x + x0); base[y*w + x] = white ? (v >= WT ? 1 : 0) : (v < 128 ? 1 : 0);
     }
     let pass = base;
     if (white) {                                      // 輪郭のすき間から漏れないよう、黒を少し太らせる
-      const dk = new Uint8Array(n); for (let i = 0; i < n; i++) dk[i] = base[i] ? 0 : 1;
+      const dk = new Uint8Array(n);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const v = lum((y + y0)*W + x + x0); dk[y*w + x] = v < (tone ? 110 : WT) ? 1 : 0;
+      }
       const wall = dilateMask(dk, w, h, r);
       pass = new Uint8Array(n); for (let i = 0; i < n; i++) pass[i] = base[i] && !wall[i] ? 1 : 0;
     }
@@ -632,8 +642,11 @@ function blockMask(polys, ox, oy, w, h, pad, pageW, pageH){
 
 /* 塗った黒の中に島のように残った「塗られていない所」（はみ出した花びらなど）。
    d：塗ったあと、od：塗る前。クリックした点を含む島を返す。端に触れる・大きすぎる（コマの絵につながっている）ときは null */
-function islandAt(d, od, w, h, X, Y, limit, block){
-  const isP = i => { if (block && block[i]) return true; const q = i*4; return d[q] !== od[q] || d[q+1] !== od[q+1] || d[q+2] !== od[q+2] || d[q+3] !== od[q+3]; };
+function islandAt(d, od, w, h, X, Y, limit, block, bounds){
+  // bounds [x1,y1,x2,y2]：切り抜く範囲。その外は書き出されないので壁として扱う（範囲の外の白とつながらないように）
+  const [bx1_, by1_, bx2_, by2_] = bounds || [0, 0, w, h];
+  const isP = i => { const x = i % w, y = (i / w) | 0; if (x < bx1_ || y < by1_ || x >= bx2_ || y >= by2_) return true;
+    if (block && block[i]) return true; const q = i*4; return d[q] !== od[q] || d[q+1] !== od[q+1] || d[q+2] !== od[q+2] || d[q+3] !== od[q+3]; };
   X = Math.round(X); Y = Math.round(Y);
   let start = -1;
   for (let rr = 0; rr <= 3 && start < 0; rr++)
@@ -724,7 +737,7 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
     const block = blockMask(man.block, ox, oy, cw, ch, man.blockPad, man.pageW, man.pageH);
     man.rims.forEach(([x, y], k) => {
       // まず、塗った黒に囲まれた島（はみ出した花びらなど）か。島なら、その輪郭に沿って削る
-      const isl = islandAt(painted0, od, cw, ch, x - ox, y - oy, 0.05 * cw * ch, block);
+      const isl = islandAt(painted0, od, cw, ch, x - ox, y - oy, 0.05 * cw * ch, block, man.bounds);
       if (isl) {
         const pad = man.rimW + 1, gx0 = Math.max(0, isl.bx1 - pad), gy0 = Math.max(0, isl.by1 - pad);
         const ww = Math.min(cw, isl.bx2 + pad + 1) - gx0, hh = Math.min(ch, isl.by2 + pad + 1) - gy0;
@@ -739,7 +752,12 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
         return;
       }
       // 島でなければ（コマの中までつながったフキダシなど）、中をたどって形を取る
-      const rh = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
+      // 削れる（塗った所に帯がかかる）形が取れるまで、トーンを通れるようにして試し直す
+      const hits = rh => { let n = 0; for (let yy = 0; yy < rh.h; yy++) for (let xx = 0; xx < rh.w; xx++) {
+        if (!rh.halo[yy*rh.w + xx]) continue; const p = ((yy + rh.y0)*cw + xx + rh.x0) * 4;
+        if (painted0[p] !== od[p] || painted0[p+1] !== od[p+1] || painted0[p+2] !== od[p+2]) n++; } return n; };
+      let rh = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW, man.bounds, false);
+      if (!rh || !hits(rh)) { const t = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW, man.bounds, true); if (t && hits(t)) rh = t; }
       if (!rh) { failed.push(k); return; }
       for (let yy = 0; yy < rh.h; yy++) for (let xx = 0; xx < rh.w; xx++) {
         if (!rh.halo[yy*rh.w + xx]) continue;
