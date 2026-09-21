@@ -138,8 +138,7 @@
         <div><span class="k">何もない所をドラッグ</span><span>四角いコマを足す</span></div>
         <div><span class="k">コマの中をドラッグ</span><span>動かす</span></div>
         <div><span class="k">辺をドラッグ</span><span>その辺だけ平行に動かす（縦横に伸び縮み。台形にならない）</span></div>
-        <div><span class="k">○をドラッグ</span><span>四角いコマは四角のまま角を動かす。斜めコマは角だけ動かす</span></div>
-        <div><span class="k"><kbd>⌘</kbd>＋○</span><span>四角いコマでも、角だけを自由に動かす（斜めにしたいとき）</span></div>
+        <div><span class="k">○をドラッグ</span><span>その角だけ動かす（斜めにしたいとき）。水平・垂直や、ほかのコマの斜めの辺と同じ角度に吸い付く</span></div>
         <div><span class="k"><kbd>shift</kbd>＋中をドラッグ</span><span>水平か垂直にだけ動かす</span></div>
         <div><span class="k">辺をダブルクリック</span><span>角を1つ増やす</span></div>
         <div><span class="k"><kbd>option</kbd>＋○</span><span>その角を消す</span></div>
@@ -176,7 +175,7 @@
       <strong id="curName">—</strong>
       <span id="curSize"></span>
       <span class="sp"></span>
-      <label class="ck" title="角を動かすとき、となりの角と水平・垂直にそろえる"><input type="checkbox" id="snapHV" checked> 水平・垂直にスナップ</label>
+      <label class="ck" title="角を動かすとき、辺が水平・垂直や、ほかのコマの辺と同じ角度になる所に吸い付く"><input type="checkbox" id="snapHV" checked> 水平・垂直にスナップ</label>
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnRect" class="mini">四角にする</button>
       <button id="btnDetect" class="mini">このページを再検出</button>
@@ -1080,6 +1079,45 @@ function moveEdge(P, j, d, nrm){
   return out;
 }
 
+/* スナップに使う向き：水平・垂直と、ページ内のほかの辺の向き（動かす角につながる2辺は除く）。
+   右のコマを斜めにしたら、左のコマの辺も同じ角度にそろえられる */
+function snapDirs(p, si, v){
+  const dirs = [[1,0],[0,1]];
+  p.shapes.forEach((s, i) => {
+    const P = toPx(s.poly, p), n = P.length;
+    for (let j = 0; j < n; j++) {
+      if (i === si && (j === v || j === (v - 1 + n) % n)) continue;
+      const a = P[j], b = P[(j+1)%n], L = Math.hypot(b[0]-a[0], b[1]-a[1]);
+      if (L < 20) continue;
+      const d = [(b[0]-a[0])/L, (b[1]-a[1])/L];
+      if (dirs.every(e => Math.abs(d[0]*e[1] - d[1]*e[0]) > 0.005)) dirs.push(d);   // 0.3°以上ちがう向きだけ
+    }
+  });
+  return dirs;
+}
+/* 角 m を、となりの角 q から見て「スナップの向き」にそろう所へ吸い付ける。
+   2辺とも吸い付くなら、その交点に置く */
+function snapVertex(m, neighbors, dirs, T){
+  const hits = [];
+  for (const q of neighbors) {
+    let best = null;
+    const wx = m[0]-q[0], wy = m[1]-q[1];
+    for (const d of dirs) {
+      if (Math.abs(wx*d[0] + wy*d[1]) < T) continue;           // 短すぎる辺は向きが定まらない
+      const dist = Math.abs(wx*d[1] - wy*d[0]);
+      if (dist < T && (!best || dist < best.dist)) best = { q, d, dist };
+    }
+    if (best) hits.push(best);
+  }
+  const proj = h => { const t = (m[0]-h.q[0])*h.d[0] + (m[1]-h.q[1])*h.d[1]; return [h.q[0] + h.d[0]*t, h.q[1] + h.d[1]*t]; };
+  if (hits.length === 2) {
+    const x = isect(hits[0].q, hits[0].d, hits[1].q, hits[1].d);
+    if (x && Math.hypot(x[0]-m[0], x[1]-m[1]) < 2*T) return x;
+  }
+  if (!hits.length) return m;
+  return proj(hits.reduce((a, b) => a.dist <= b.dist ? a : b));
+}
+
 ov.addEventListener('pointerdown', e => {
   const p = pages[cur]; if (!p) return;
   const n = ptN(e), t = e.target, k = uscale();
@@ -1096,7 +1134,7 @@ ov.addEventListener('pointerdown', e => {
       return;
     }
     snap();
-    drag = { mode:'vertex', i:sel, v:j, start: p.shapes[sel].poly.map(q => q.slice()), free: e.metaKey || e.ctrlKey, moved:false };
+    drag = { mode:'vertex', i:sel, v:j, start: p.shapes[sel].poly.map(q => q.slice()), dirs: snapDirs(p, sel, j), moved:false };
   } else if (t.classList.contains('he')) {
     snap();
     const P = toPx(p.shapes[sel].poly, p), j = +t.dataset.e;
@@ -1142,26 +1180,11 @@ ov.addEventListener('pointermove', e => {
     p.shapes[drag.i].poly = drag.start.map(q => [clamp(q[0]+dx), clamp(q[1]+dy)]);
     drag.moved = true; renderShapes();
   } else if (drag.mode === 'vertex') {
-    const st = drag.start;
-    let poly;
-    if (isRectPoly(st) && !drag.free) {
-      // 四角は四角のまま：向かいの角を止めて、つかんだ角を動かす
-      const o = st[(drag.v + 2) % 4];
-      const x1 = Math.min(o[0], n[0]), x2 = Math.max(o[0], n[0]), y1 = Math.min(o[1], n[1]), y2 = Math.max(o[1], n[1]);
-      if (x2 - x1 < 0.005 || y2 - y1 < 0.005) return;
-      poly = [[x1,y1],[x2,y1],[x2,y2],[x1,y2]];
-    } else {
-      const m = toSvg(n, p);
-      if (snapOn) {                                   // となりの角と水平・垂直にそろう所に吸い付く
-        const P = toPx(st, p), T = 8 * uscale();
-        for (const q of [P[(drag.v - 1 + P.length) % P.length], P[(drag.v + 1) % P.length]]) {
-          if (Math.abs(m[0] - q[0]) < T) m[0] = q[0];
-          if (Math.abs(m[1] - q[1]) < T) m[1] = q[1];
-        }
-      }
-      poly = st.map(q => q.slice());
-      poly[drag.v] = [clamp(m[0]/W), clamp(m[1]/H)];
-    }
+    const st = drag.start, P = toPx(st, p), v = drag.v, N = P.length;
+    let m = toSvg(n, p);
+    if (snapOn) m = snapVertex(m, [P[(v - 1 + N) % N], P[(v + 1) % N]], drag.dirs, 8 * uscale());
+    const poly = st.map(q => q.slice());
+    poly[v] = [clamp(m[0]/W), clamp(m[1]/H)];
     p.shapes[drag.i].poly = poly; drag.moved = true; renderShapes();
   } else if (drag.mode === 'edge') {
     const m = toSvg(n, p);
