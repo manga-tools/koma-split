@@ -520,9 +520,11 @@ function paintGutters(g, w, h, polys, r, fill, edges = true, seeds = []){
 function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man){
   const E = document.createElement('canvas'); E.width = w + 2*m; E.height = h + 2*m;
   const g = E.getContext('2d');
-  g.fillStyle = '#fff'; g.fillRect(0, 0, E.width, E.height);
+  // ページの外は黒＝壁にして、そこからはたどらない。
+  // 白にしていると、断ち切りのコマ（絵がページの端まで届いている）で、ページの外から絵の白へ入り込んでしまう
+  g.fillStyle = '#000'; g.fillRect(0, 0, E.width, E.height);
   g.drawImage(src, x - m, y - m, E.width, E.height, 0, 0, E.width, E.height);
-  paintGutters(g, E.width, E.height, [], r, fill, edges && !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
+  paintGutters(g, E.width, E.height, [], r, fill, !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
   applyManual(g, x - m, y - m, src, man, fill);
   return E;
 }
