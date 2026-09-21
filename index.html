@@ -420,7 +420,8 @@ function frameLines(poly, dark, unit){
    どのモードも、枠線を測ってその位置に合わせる（検出はプレビュー基準なので、原寸では数pxずれているため） */
 function cutPolygon(poly, dark, unit, mode, grow){
   const lines = frameLines(poly, dark, unit);
-  const at = { in: l => l.s + l.t + unit, mid: l => l.s + l.t/2, out: l => l.s }[mode];
+  // protect：塗りで守る所。枠線の中へ1.5pxだけ入れて、線のきわのにじみまで塗れるようにする
+  const at = { in: l => l.s + l.t + unit, mid: l => l.s + l.t/2, out: l => l.s, protect: l => l.s + 1.5*unit }[mode];
   const dists = lines.map(l => (l ? at(l) : 0) - (grow || 0));
   return dists.every(d => !d) ? poly : offsetEdges(poly, dists);
 }
@@ -559,9 +560,13 @@ function subPanels(p, s){
   if (s._sub && s._sub.key === key) return s._sub.polys;
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   c.getContext('2d').drawImage(p.pv, x, y, w, h, 0, 0, w, h);
+  if (!p.dark) p.dark = darkSampler(p.pv);
+  // 守る所の辺は、枠線の外側のふちにぴったり合わせる。
+  // 検出した辺は枠線より数px外にあることがあり、そのままだと溝の黒と枠線のあいだに白い線が残る
   const polys = detect(c, o)
-    .map(f => f.poly.map(q => [(x + q[0]*w) / p.pv.width, (y + q[1]*h) / p.pv.height]))
-    .filter(P => polyArea(P) * p.pv.width * p.pv.height < 0.9 * w * h);   // 全体を1つで覆うだけなら、守る意味がない
+    .map(f => cutPolygon(f.poly.map(q => [x + q[0]*w, y + q[1]*h]), p.dark, 1, 'protect', 0))
+    .filter(P => polyArea(P) < 0.9 * w * h)            // 全体を1つで覆うだけなら、守る意味がない
+    .map(P => P.map(q => [q[0] / p.pv.width, q[1] / p.pv.height]));
   s._sub = { key, polys };
   return polys;
 }
