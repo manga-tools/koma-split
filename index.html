@@ -111,6 +111,7 @@
   .pitem.on{border-color:var(--accent)}
   .pitem .no{font-weight:700;font-size:12px;width:20px;text-align:center;color:var(--accent2)}
   .pitem canvas{background:#000;border-radius:3px;display:block}
+  #panelList{overflow-x:auto}
   .pitem .ops{margin-left:auto;display:flex;flex-direction:column;gap:2px}
   .pitem.grp{border-style:dashed}
   .pitem .no{line-height:1.1}
@@ -2238,7 +2239,10 @@ $('#fmt').onchange = e => { $('#rowQ').style.display = e.target.value === 'jpg' 
 $('#quality').oninput = e => $('#vQ').textContent = e.target.value;
 $('#fill').onchange = () => renderPanelList();
 $('#cutPos').onchange = () => { renderShapes(); renderPanelList(); };
-$('#thumbSize').oninput = e => {
+// 動かしている間は見本の大きさだけ変える。列の幅は手を離したときに変える
+// （動かすたびに列の幅が変わると、スライダー自体が動いてプルプルするため）
+$('#thumbSize').oninput = () => renderPanelList();
+$('#thumbSize').onchange = e => {
   $('#colPanels').style.flexBasis = Math.max(250, +e.target.value + 130) + 'px';
   renderStage(); renderShapes(); renderPanelList();
 };
@@ -2265,7 +2269,10 @@ function redetectSoon(){
 }
 
 document.addEventListener('keydown', e => {
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  // 文字を入力する欄だけは、キーをそちらに渡す（スライダーやチェックを触ったあとでも delete でコマを消せるように）
+  const t = e.target;
+  if (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && /^(text|number|search)$/.test(t.type))) return;
+  if (t.tagName === 'INPUT' && /^(Delete|Backspace)$/.test(e.key)) t.blur();
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0 && pages[cur]) {
     e.preventDefault(); snap(); pages[cur].shapes.splice(sel,1); sel = -1; renderShapes(); renderPanelList(); renderThumbs(); return;
