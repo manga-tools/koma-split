@@ -160,7 +160,7 @@
         <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
-        <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、まわりに白いフチを付ける（黒く塗ったまわりで輪郭が分からなくなるとき）。黒いフキダシもOK。赤い点＝形が見つからなかった</span></div>
+        <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、そのまわりの<b>塗った黒だけ</b>を輪郭に沿って細く削り、白いフチにする（黒く塗ったまわりで輪郭が分からなくなるとき）。枠線や絵の黒は削らない。黒いフキダシは黒い所をクリック。赤い点＝形が見つからなかった</span></div>
         <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
         <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
@@ -199,7 +199,7 @@
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
-      <button id="btnRim" class="mini" title="フキダシの中をクリックすると、まわりに白いフチを付ける（黒いフキダシもOK。option＋クリックで取り消し）">白フチ</button>
+      <button id="btnRim" class="mini" title="フキダシの中をクリックすると、まわりの塗った黒だけを輪郭に沿って細く削って、白いフチにする（黒いフキダシは黒い所をクリック。option＋クリックで取り消し）">白フチ</button>
       <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
       <input type="range" id="eraseSize" min="4" max="60" value="14" style="width:60px" title="消しゴムの大きさ">
       <button id="btnRect" class="mini">四角にする</button>
@@ -544,7 +544,7 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
   return E;
 }
 
-/* 白フチ：クリックした所から、フキダシ（や黒いフキダシ）の形をたどって、まわりに白い帯を描くための帯の形を返す。
+/* 白フチ：クリックした所から、フキダシ（や黒いフキダシ）の形をたどって、そのまわりの帯（削る所）を返す。
    od は塗る前の絵。形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
 function rimHalo(od, w, h, sx, sy, r, rimW){
   const N = w*h, d = od.data, X = Math.round(sx), Y = Math.round(sy);
@@ -587,12 +587,17 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
     if (fill === 'none') g.clearRect(x1-ox, y1-oy, x2-x1, y2-y1);
     else { g.fillStyle = fill; g.fillRect(x1-ox, y1-oy, x2-x1, y2-y1); }
   }
+  // 白フチ：フキダシの輪郭に沿って、塗った所だけを細く削る（元の絵＝ふつうは白い紙に戻す）。
+  // 枠線や絵の黒は塗ったものではないので、そのまま残る
   if (man.rims.length && orig) {
-    const img = g.getImageData(0, 0, cw, ch), d = img.data;
+    const img = g.getImageData(0, 0, cw, ch), d = img.data, od = orig.data;
     man.rims.forEach(([x, y], k) => {
       const halo = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
       if (!halo) { failed.push(k); return; }
-      for (let i = 0, p = 0; i < halo.length; i++, p += 4) if (halo[i]) { d[p] = d[p+1] = d[p+2] = 255; d[p+3] = 255; }
+      for (let i = 0, p = 0; i < halo.length; i++, p += 4)
+        if (halo[i] && (d[p] !== od[p] || d[p+1] !== od[p+1] || d[p+2] !== od[p+2] || d[p+3] !== od[p+3])) {
+          d[p] = od[p]; d[p+1] = od[p+1]; d[p+2] = od[p+2]; d[p+3] = od[p+3];
+        }
     });
     g.putImageData(img, 0, 0);
   }
@@ -1842,7 +1847,7 @@ function setTool(t){
   for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRim','rim']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
-  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ（フキダシの中をクリック）' }[tool];
+  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）' }[tool];
   $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
   $('#toolHint').style.display = label ? 'block' : 'none';
 }
