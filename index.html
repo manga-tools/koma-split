@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>コマを分割する</title>
+<style>
+  :root{
+    --bg:#14161a; --panel:#1c1f26; --panel2:#232733; --line:#333947;
+    --fg:#e8eaf0; --muted:#9aa3b2; --accent:#4c8dff; --accent2:#ffb020;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;overflow:hidden}
+  header{padding:8px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:14px;margin:0;font-weight:600}
+  .hint{color:var(--muted);font-size:12px}
+  .sp{flex:1}
+
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px;white-space:nowrap}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button.warn{color:#ff9a9a}
+  button.mini{padding:2px 7px;font-size:11px}
+  button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  button[disabled]{opacity:.35;cursor:default}
+  button[disabled]:hover{border-color:var(--line)}
+  input[type=number],input[type=text],select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12px}
+  input[type=range]{accent-color:var(--accent)}
+  label.ck{display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}
+
+  #help{border-bottom:1px solid var(--line);background:var(--panel);font-size:12px}
+  #help summary{cursor:pointer;padding:6px 12px;color:var(--muted);user-select:none;list-style:none;display:flex;align-items:center;gap:6px}
+  #help summary::-webkit-details-marker{display:none}
+  #help summary::before{content:'▶';font-size:9px;transition:transform .15s}
+  #help[open] summary::before{transform:rotate(90deg)}
+  #help summary:hover{color:var(--fg)}
+  .helpBody{padding:2px 12px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px 22px}
+  .helpBody h4{margin:0 0 4px;font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em}
+  .helpBody dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:5px 10px;align-items:baseline}
+  .helpBody dl > div{display:contents}
+  .helpBody .k{justify-self:start;white-space:nowrap}
+  .helpBody dl > div > span:not(.k){color:var(--muted);line-height:1.45}
+  .helpBody kbd{display:inline-block;background:#2c3140;border:1px solid #454c5e;border-bottom-width:2px;
+    border-radius:4px;padding:0 5px;font:600 11px/17px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fg);white-space:nowrap}
+
+  .wrap{display:flex;height:calc(100vh - 45px);min-height:0}
+  .col{display:flex;flex-direction:column;min-width:0;min-height:0}
+  #colPages{flex:0 0 172px;border-right:1px solid var(--line)}
+  #colEdit{flex:1 1 auto}
+  #colPanels{flex:0 0 250px;border-left:1px solid var(--line)}
+  .colhead{padding:6px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;background:var(--panel);font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .colhead strong{color:var(--fg)}
+  .colbody{flex:1;overflow:auto;padding:10px}
+
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:24px 16px;text-align:center;color:var(--muted);cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:200px}
+  .drop.over{border-color:var(--accent);color:var(--fg);background:#1a2233}
+  #dropBig{position:absolute;inset:16px;z-index:50;background:rgba(20,22,26,.92);border:2px dashed var(--accent);border-radius:14px;
+           display:none;align-items:center;justify-content:center;font-size:15px;color:var(--fg);pointer-events:none}
+  #dropBig.on{display:flex}
+
+  .thumb{position:relative;margin-bottom:8px;border:2px solid transparent;border-radius:6px;cursor:pointer;background:#0f1116;padding:3px}
+  .thumb.on{border-color:var(--accent)}
+  .thumb canvas{display:block;width:100%;height:auto;background:#fff;border-radius:3px}
+  .thumb .nm{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .thumb .cnt{position:absolute;top:5px;right:5px;background:rgba(0,0,0,.66);color:#fff;font-size:10px;border-radius:3px;padding:0 4px}
+  .thumb .x{position:absolute;top:5px;left:5px;background:#ff5c5c;color:#fff;font-size:10px;line-height:15px;padding:0 5px;border-radius:3px;display:none}
+  .thumb:hover .x{display:block}
+
+  #editBody{flex:1;overflow:auto;padding:14px;position:relative;display:flex;justify-content:center;align-items:flex-start}
+  #stage{position:relative;line-height:0;background:#fff;box-shadow:0 3px 18px rgba(0,0,0,.5);flex:0 0 auto}
+  #stage canvas{display:block;width:100%;height:auto}
+  #ov{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;overflow:visible}
+  #ov.split{cursor:cell}
+  .mk{fill:rgba(255,176,32,.10);stroke:var(--accent2)}
+  .mk.on{fill:rgba(76,141,255,.16);stroke:var(--accent)}
+  .mk:hover{fill:rgba(255,176,32,.2)}
+  .num rect{fill:var(--accent2)}
+  .num text{fill:#000;font-weight:700;font-family:inherit;text-anchor:middle}
+  .num.on rect{fill:var(--accent)}
+  .num.on text{fill:#fff}
+  .hv{fill:var(--accent);stroke:#fff;cursor:move}
+  .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
+  .cutline{stroke:#ff4d8d;stroke-linecap:round}
+  .blank{color:var(--muted);text-align:center;padding:60px 20px;font-size:13px;line-height:2}
+
+  .pitem{display:flex;gap:7px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px;margin-bottom:6px;cursor:pointer}
+  .pitem.on{border-color:var(--accent)}
+  .pitem .no{font-weight:700;font-size:12px;width:20px;text-align:center;color:var(--accent2)}
+  .pitem canvas{background:#000;border-radius:3px;display:block;max-width:104px;max-height:78px;width:auto;height:auto}
+  .pitem .ops{margin-left:auto;display:flex;flex-direction:column;gap:2px}
+
+  .set{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px;display:flex;flex-direction:column;gap:6px}
+  .set .row{display:flex;align-items:center;gap:6px}
+  .set .row > span:first-child{color:var(--muted);flex:0 0 96px}
+  .set input[type=range]{flex:1;min-width:0}
+  .set .v{width:40px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  #busy{position:fixed;inset:0;background:rgba(10,11,14,.82);z-index:100;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+  #busy.on{display:flex}
+  #busy .bar{width:320px;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+  #busy .bar i{display:block;height:100%;background:var(--accent);width:0%}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>コマを分割する</h1>
+  <span class="hint">PSD / TIFF / PNG / JPEG　画像はブラウザの中だけで処理されます（どこにも送りません）</span>
+  <span class="sp"></span>
+  <button id="btnAdd">原稿を追加</button>
+  <button id="btnDetectAll">全ページ自動検出</button>
+  <button id="btnExport" class="primary">まとめて書き出し（ZIP）</button>
+  <button id="btnClear" class="warn">全消去</button>
+  <input type="file" id="file" accept=".psd,.psb,.tif,.tiff,image/*" multiple hidden>
+</header>
+
+<details id="help">
+  <summary>使い方・ショートカット</summary>
+  <div class="helpBody">
+    <div>
+      <h4>ながれ</h4>
+      <dl>
+        <div><span class="k">1</span><span>原稿をドロップ（複数ページまとめてOK。ファイル名順に並びます）</span></div>
+        <div><span class="k">2</span><span>読み込んだ時点で自動でコマを検出します</span></div>
+        <div><span class="k">3</span><span>ズレているところだけ手で直す</span></div>
+        <div><span class="k">4</span><span>「まとめて書き出し」でZIPに（元の解像度のまま切り出します）</span></div>
+      </dl>
+    </div>
+    <div>
+      <h4>コマの形を直す</h4>
+      <dl>
+        <div><span class="k">何もない所をドラッグ</span><span>四角いコマを足す</span></div>
+        <div><span class="k">コマの中をドラッグ</span><span>動かす</span></div>
+        <div><span class="k">○をドラッグ</span><span>その角を動かす（斜めコマはこれで合わせる）</span></div>
+        <div><span class="k">辺をダブルクリック</span><span>角を1つ増やす</span></div>
+        <div><span class="k"><kbd>option</kbd>＋○</span><span>その角を消す</span></div>
+        <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
+        <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
+        <div><span class="k"><kbd>⌘Z</kbd></span><span>元に戻す</span></div>
+        <div><span class="k"><kbd>↑</kbd><kbd>↓</kbd></span><span>前後のページへ</span></div>
+      </dl>
+    </div>
+    <div>
+      <h4>うまく検出できないとき</h4>
+      <dl>
+        <div><span class="k">コマがくっつく</span><span>フキダシや絵が溝をまたいでいると割れません。「線で割る」で手当てします</span></div>
+        <div><span class="k">斜めコマが四角になる</span><span>「斜めコマも探す」がオンか確認。だめなら「線で割る」</span></div>
+        <div><span class="k">細かく割れすぎる</span><span>「溝の最小幅」「コマの最小サイズ」を上げる</span></div>
+        <div><span class="k">ゴミを拾う</span><span>「ノイズ許容」を上げる</span></div>
+        <div><span class="k">斜めコマの外側</span><span>書き出すときに「コマ外の塗り」の色で埋まります（初期値は黒）</span></div>
+      </dl>
+    </div>
+  </div>
+</details>
+
+<div class="wrap">
+  <div class="col" id="colPages">
+    <div class="colhead"><strong>ページ</strong><span class="sp"></span><span id="pageCnt">0</span></div>
+    <div class="colbody" id="pagesBody">
+      <div class="drop" id="drop">ここに原稿をドロップ<br><span style="font-size:11px">PSD / PSB / TIFF / PNG / JPEG</span></div>
+      <div id="thumbs"></div>
+    </div>
+  </div>
+
+  <div class="col" id="colEdit">
+    <div class="colhead">
+      <strong id="curName">—</strong>
+      <span id="curSize"></span>
+      <span class="sp"></span>
+      <button id="btnSplit" class="mini">線で割る</button>
+      <button id="btnRect" class="mini">四角にする</button>
+      <button id="btnDetect" class="mini">このページを再検出</button>
+      <button id="btnClearShapes" class="mini warn">コマを全部消す</button>
+      <span>表示倍率</span><input type="range" id="zoom" min="20" max="300" value="100" style="width:100px">
+      <span id="zoomV">100%</span>
+    </div>
+    <div id="editBody">
+      <div id="stage" style="display:none"><canvas id="cv"></canvas><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div class="blank" id="blank">左に原稿をドロップしてください<br><span style="font-size:12px;color:var(--muted)">PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
+      <div id="dropBig">ここに落とす</div>
+    </div>
+  </div>
+
+  <div class="col" id="colPanels">
+    <div class="set">
+      <div style="color:var(--fg);font-weight:600">自動検出の設定</div>
+      <div class="row"><span>白とみなす明るさ</span><input type="range" id="sWhite" min="150" max="254" value="238"><span class="v" id="vWhite">238</span></div>
+      <div class="row"><span>溝の最小幅</span><input type="range" id="sGap" min="2" max="30" value="6"><span class="v" id="vGap">0.6%</span></div>
+      <div class="row" title="フキダシや人物が溝をまたいでいても溝とみなす割合"><span>はみ出し許容</span><input type="range" id="sTol" min="0" max="70" value="40"><span class="v" id="vTol">40%</span></div>
+      <div class="row"><span>コマの最小サイズ</span><input type="range" id="sMin" min="2" max="30" value="8"><span class="v" id="vMin">8%</span></div>
+      <div class="row"><span>枠を広げる</span><input type="range" id="sGrow" min="0" max="40" value="0"><span class="v" id="vGrow">0px</span></div>
+      <div class="row" style="gap:10px">
+        <label class="ck"><input type="checkbox" id="obl" checked> 斜めコマも探す</label>
+        <label class="ck" title="白い溝が無く、枠線1本で区切られた段も切る"><input type="checkbox" id="lines" checked> 枠線1本でも切る</label>
+      </div>
+      <div class="row" style="gap:10px"><label class="ck"><input type="checkbox" id="rtl" checked> 右→左</label><button id="btnReorder" class="mini">番号を振り直す</button></div>
+    </div>
+    <div class="colhead"><strong>このページのコマ</strong><span class="sp"></span><span id="shapeCnt">0</span></div>
+    <div class="colbody" id="panelList"></div>
+    <div class="set">
+      <div class="row"><span>形式</span>
+        <select id="fmt" style="flex:1"><option value="png">PNG（劣化なし）</option><option value="jpg">JPEG</option></select>
+      </div>
+      <div class="row" id="rowQ" style="display:none"><span>画質</span><input type="range" id="quality" min="50" max="100" value="92"><span class="v" id="vQ">92</span></div>
+      <div class="row"><span>コマ外の塗り</span>
+        <select id="fill" style="flex:1"><option value="#000000">黒</option><option value="#ffffff">白</option><option value="none">透明（PNGのみ）</option></select>
+      </div>
+      <div class="row"><span>ファイル名</span><input type="text" id="prefix" placeholder="ページ名を使う" style="flex:1;min-width:0"></div>
+      <div class="row"><label class="ck"><input type="checkbox" id="serial"> 全ページ通し番号にする</label></div>
+    </div>
+  </div>
+</div>
+
+<div id="busy"><div id="busyT">処理中…</div><div class="bar"><i id="busyB"></i></div></div>
+
+<script src="lib/pako.js"></script>
+<script src="lib/UTIF.js"></script>
+<script src="lib/ag-psd.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+/* ============================================================
+   状態
+   pages[i] = {name, base, file, W,H(原寸), pv(プレビューcanvas), shapes:[{poly:[[x,y]…] 0..1}]}
+   コマは四角とはかぎらないので、すべて多角形で持つ（四角も4点の多角形）
+============================================================ */
+let pages = [], cur = -1, sel = -1, zoom = 1, splitMode = false;
+const undoStack = [];
+
+/* ============================================================
+   幾何
+============================================================ */
+function polyBBox(poly){
+  let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity;
+  for (const p of poly){ if(p[0]<x1)x1=p[0]; if(p[0]>x2)x2=p[0]; if(p[1]<y1)y1=p[1]; if(p[1]>y2)y2=p[1]; }
+  return {x1,y1,x2,y2,w:x2-x1,h:y2-y1};
+}
+function polyArea(poly){
+  let a=0; for(let i=0;i<poly.length;i++){ const p=poly[i],q=poly[(i+1)%poly.length]; a += p[0]*q[1]-q[0]*p[1]; }
+  return Math.abs(a)/2;
+}
+function centroid(poly){
+  let x=0,y=0; for(const p of poly){x+=p[0];y+=p[1];} return [x/poly.length, y/poly.length];
+}
+/* 半平面 nx*x+ny*y <= d で切る（Sutherland–Hodgman） */
+function clipHalf(poly, nx, ny, d){
+  const out=[], n=poly.length;
+  for(let i=0;i<n;i++){
+    const a=poly[i], b=poly[(i+1)%n];
+    const da=nx*a[0]+ny*a[1]-d, db=nx*b[0]+ny*b[1]-d;
+    if(da<=0) out.push(a);
+    if((da<0&&db>0)||(da>0&&db<0)){
+      const t=da/(da-db);
+      out.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]);
+    }
+  }
+  return out;
+}
+const isRectPoly = poly => poly.length===4 && poly.every((p,i)=>{
+  const q=poly[(i+1)%4];
+  return Math.abs(p[0]-q[0])<1e-6 || Math.abs(p[1]-q[1])<1e-6;
+});
+/* 外側へ g だけ広げる（各辺を法線方向に平行移動して交点を取り直す） */
+function offsetPoly(poly, g, W, H){
+  if (!g) return poly;
+  const c = centroid(poly), n = poly.length, planes = [];
+  for(let i=0;i<n;i++){
+    const p=poly[i], q=poly[(i+1)%n];
+    let nx=q[1]-p[1], ny=-(q[0]-p[0]); const L=Math.hypot(nx,ny); if(L<1e-9) continue;
+    nx/=L; ny/=L;
+    if (nx*(c[0]-p[0])+ny*(c[1]-p[1]) > 0) { nx=-nx; ny=-ny; }   // 外向きに
+    planes.push({nx,ny,d:nx*p[0]+ny*p[1]+g});
+  }
+  let out=[[-W,-H],[W*2,-H],[W*2,H*2],[-W,H*2]];
+  for(const pl of planes) out = clipHalf(out, pl.nx, pl.ny, pl.d);
+  return out.length>=3 ? out : poly;
+}
+
+/* ============================================================
+   ファイル読み込み
+============================================================ */
+const EXT_PSD = /\.(psd|psb)$/i, EXT_TIF = /\.(tif|tiff)$/i;
+const EXT_IMG = /\.(png|jpe?g|gif|bmp|webp|avif)$/i;
+const readable = f => EXT_PSD.test(f.name) || EXT_TIF.test(f.name) || EXT_IMG.test(f.name) || /^image\//.test(f.type);
+
+async function decodeFile(file){
+  if (EXT_PSD.test(file.name)) {
+    const buf = await file.arrayBuffer();
+    let psd;
+    try {
+      psd = agPsd.readPsd(buf, { skipLayerImageData:true, skipThumbnail:true, skipCompositeImageData:false });
+    } catch (e) {
+      if (/Color mode not supported: CMYK/i.test(e.message))
+        throw new Error('CMYKのPSDは読めません。グレースケールかRGBで保存し直すか、TIFF／PNGで書き出したものを使ってください。');
+      throw e;
+    }
+    if (!psd.canvas) throw new Error('PSDに合成画像（見たままの絵）が入っていません。Photoshopの環境設定で「PSDファイルの互換性を優先」をオンにして保存し直してください。');
+    return psd.canvas;
+  }
+  if (EXT_TIF.test(file.name)) {
+    const buf = await file.arrayBuffer();
+    const ifds = UTIF.decode(buf);
+    UTIF.decodeImage(buf, ifds[0], ifds);
+    const rgba = UTIF.toRGBA8(ifds[0]);
+    const w = ifds[0].width, h = ifds[0].height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer), w, h), 0, 0);
+    return c;
+  }
+  const bmp = await createImageBitmap(file);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0); bmp.close();
+  return c;
+}
+
+const PV_MAX = 1500;
+function makePreview(src){
+  const s = Math.min(1, PV_MAX / Math.max(src.width, src.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(src.width * s));
+  c.height = Math.max(1, Math.round(src.height * s));
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+
+async function addFiles(list){
+  const files = [...list].filter(readable);
+  if (!files.length) { if (list.length) alert('読める形式がありませんでした（PSD / PSB / TIFF / PNG / JPEG）'); return; }
+  files.sort((a,b) => a.name.localeCompare(b.name, 'ja', {numeric:true}));
+  busy(true, '読み込み中…');
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    busy(true, `読み込み中… ${i+1}/${files.length}　${f.name}`, (i/files.length)*100);
+    await new Promise(r => setTimeout(r, 0));
+    try {
+      const full = await decodeFile(f);
+      const p = { name:f.name, base:f.name.replace(/\.[^.]+$/,''), file:f, W:full.width, H:full.height, pv:makePreview(full), shapes:[] };
+      full.width = full.height = 0;
+      p.shapes = detect(p.pv, params());
+      pages.push(p);
+    } catch (e) {
+      console.error(e); alert(`${f.name} を読めませんでした\n${e.message}`);
+    }
+  }
+  busy(false);
+  if (cur < 0 && pages.length) cur = 0;
+  renderAll();
+}
+
+/* ============================================================
+   自動検出
+   白い溝でページを再帰的に切っていく。溝は縦横だけでなく斜めも探す。
+   領域は「半平面の集まり」で持つので、常に凸多角形になる。
+============================================================ */
+function params(){
+  return {
+    white: +$('#sWhite').value,
+    gap:   +$('#sGap').value / 1000,        // 溝の最小幅（短辺比）
+    wmin:  1 - +$('#sTol').value / 100,     // 溝の帯がこれだけ白ければ溝とみなす（またぐフキダシや人物を許す）
+    min:   +$('#sMin').value / 100,
+    grow:  +$('#sGrow').value,
+    oblique: $('#obl').checked,
+    lines:   $('#lines').checked
+  };
+}
+
+/* ------------------------------------------------------------
+   検出の考え方（実原稿16ページで調整）
+   ページを再帰的に切っていく。切れ目の候補は3種類：
+   ・白い溝：大部分が白い帯（フキダシや人物がまたいでもよい）で、両脇に枠線。
+            幅には上限がある（窓の桟のような「白い帯＋黒い線」を拾わないため）
+   ・二重線：濃い枠線2本の間にごく細い白。斜めOK。2本とも8割以上通っていること
+   ・1本線：溝が無く、枠線だけで段を区切っているレイアウト用。縦横だけ
+            （斜めの1本線は、建物などの絵の線と区別がつかない）
+   斜めは、1/4縮小で黒い直線がいちばん濃く出る角度に当たりをつけ、
+   その周りを0.05°刻みで詰める（長い辺では0.25°ずれるだけで線がぼやけて消える）。
+   領域は半平面の集まりで持つので、切った結果は常に凸多角形になる。
+   最後に、四角いコマの角に2本の枠線で囲まれたコマが収まっていれば切り出す
+   （L字に囲まれたコマは、一刀両断では分けられないため）。
+------------------------------------------------------------ */
+const DARK = 110;
+function masks(pv, o){
+  const W = pv.width, H = pv.height;
+  const d = pv.getContext('2d').getImageData(0, 0, W, H).data;
+  const ink = new Uint8Array(W * H), dark = new Uint8Array(W * H);
+  for (let i = 0, p = 0; i < W * H; i++, p += 4) {
+    const v = d[p+3] < 128 ? 255 : (d[p]*299 + d[p+1]*587 + d[p+2]*114) / 1000;
+    ink[i] = v < o.white ? 1 : 0;
+    dark[i] = v < DARK ? 1 : 0;
+  }
+  // 斜めの角度さがし用：暗い画素の割合を1/4に縮小
+  const w4 = W >> 2, h4 = H >> 2, D4 = new Float32Array(w4 * h4);
+  for (let y = 0; y < h4 * 4; y++) {
+    const row = y * W, r4 = (y >> 2) * w4;
+    for (let x = 0; x < w4 * 4; x++) if (dark[row + x]) D4[r4 + (x >> 2)] += 1/16;
+  }
+  return { W, H, ink, dark, w4, h4, D4 };
+}
+
+/* 領域の中の標本点（step px おき）。角度ごとの走査で使い回す */
+function samples(reg, M, step){
+  const bb = polyBBox(reg.poly);
+  const x0 = Math.max(0, Math.floor(bb.x1)), x1 = Math.min(M.W, Math.ceil(bb.x2));
+  const y0 = Math.max(0, Math.floor(bb.y1)), y1 = Math.min(M.H, Math.ceil(bb.y2));
+  const cap = Math.max(0, Math.ceil((x1 - x0) / step) * Math.ceil((y1 - y0) / step));
+  const xs = new Float32Array(cap), ys = new Float32Array(cap), ik = new Uint8Array(cap), dk = new Uint8Array(cap);
+  let n = 0;
+  for (let y = y0; y < y1; y += step) {
+    const cy = y + step/2, row = y * M.W;
+    for (let x = x0; x < x1; x += step) {
+      const cx = x + step/2;
+      let ok = true;
+      for (const pl of reg.planes) if (pl.nx*cx + pl.ny*cy > pl.d + 0.5) { ok = false; break; }
+      if (!ok) continue;
+      xs[n] = cx; ys[n] = cy; ik[n] = M.ink[row + x]; dk[n] = M.dark[row + x]; n++;
+    }
+  }
+  return { n, xs, ys, ik, dk };
+}
+
+function profile(S, a, step){
+  const nx = Math.cos(a), ny = Math.sin(a);
+  let tmin = Infinity, tmax = -Infinity;
+  for (let i = 0; i < S.n; i++) { const t = nx*S.xs[i] + ny*S.ys[i]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; }
+  const n = Math.floor((tmax - tmin) / step) + 1;
+  const cnt = new Float64Array(n), ik = new Float64Array(n), dk = new Float64Array(n);
+  for (let i = 0; i < S.n; i++) {
+    const b = Math.floor((nx*S.xs[i] + ny*S.ys[i] - tmin) / step);
+    cnt[b]++; ik[b] += S.ik[i]; dk[b] += S.dk[i];
+  }
+  return { nx, ny, tmin, n, cnt, ik, dk, axis: Math.abs(nx*ny) < 1e-9 };
+}
+
+function runsOf(test, n){
+  const r = []; let s = -1;
+  for (let i = 0; i <= n; i++) {
+    const v = i < n && test(i);
+    if (v && s < 0) s = i;
+    if (!v && s >= 0) { r.push([s, i]); s = -1; }
+  }
+  return r;
+}
+
+function separators(pr, step, P){
+  const { n, cnt, ik, dk } = pr;
+  let cmax = 0; for (let i = 0; i < n; i++) if (cnt[i] > cmax) cmax = cnt[i];
+  const white = new Float64Array(n), darkf = new Float64Array(n), valid = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const c = Math.max(1, cnt[i]);
+    white[i] = 1 - ik[i]/c; darkf[i] = dk[i]/c; valid[i] = cnt[i] >= 0.3*cmax ? 1 : 0;
+  }
+  const inside = (s, e) => s*step >= P.minEdge && (n - e)*step >= P.minEdge;
+  const maxIn = (a, b) => { let m = 0; for (let i = Math.max(0,a); i < Math.min(n,b); i++) if (darkf[i] > m) m = darkf[i]; return m; };
+  // clean: 真っ白な溝・枠線・二重線。フキダシや人物・トーンがまたいでいる溝より必ず先に選ぶ。
+  // またいでいる溝は、明るいトーンのコマの中を突っ切っていることがある（7ページ）。
+  // 先に確かな切れ目で段を分けておけば、その段の中だけで見ることになり、突き抜けない
+  const cands = [];
+  const take = (t, score, clean) => cands.push({ nx:pr.nx, ny:pr.ny, t, score: score + (clean ? 1000 : 0) });
+
+  // 1) 白い溝（両脇に枠線）
+  const fw = Math.max(1, Math.round(5 / step));
+  for (const [s, e] of runsOf(i => valid[i] && white[i] >= P.wmin, n)) {
+    const w = (e - s) * step;
+    if (w < P.minGap || w > P.maxGap || !inside(s, e)) continue;
+    const fl = s > 0 ? maxIn(s - fw, s) : 0, fr = e < n ? maxIn(e, e + fw) : 0;
+    let wf = 0; for (let k = s; k < e; k++) wf += white[k]; wf /= (e - s);
+    if ((Math.max(fl, fr) >= 0.5 && Math.min(fl, fr) >= 0.45) || wf >= 0.985)
+      take(pr.tmin + (s + e)/2*step, w * wf * (0.5 + fl + fr), wf >= 0.93);
+  }
+
+  // 線（太さ12px以下。それより太いのはベタ塗り）
+  const L = runsOf(i => valid[i] && darkf[i] >= 0.65, n).filter(([a, b]) => (b - a)*step <= 12);
+
+  // 2) 二重線：濃い線2本の間が白っぽい（線の縁のにじみは許す）
+  for (let k = 0; k + 1 < L.length; k++) {
+    const [a1, b1] = L[k], [a2, b2] = L[k+1];
+    const g = (a2 - b1) * step;
+    if (g < 1 || g > P.maxGap || !inside(a1, b2)) continue;
+    let gapOk = true;
+    for (let i = b1; i < a2; i++) if (!(white[i] >= P.wmin || darkf[i] + white[i] >= 0.7)) { gapOk = false; break; }
+    if (!gapOk) continue;
+    const c = Math.min(maxIn(a1, b1), maxIn(a2, b2));
+    if (c < 0.8) continue;
+    // 外側が両方とも黒いもの（黒フキダシの中の白抜き文字の行間など）は枠ではない
+    const o = Math.max(1, Math.round(4 / step));
+    const outL = a1 - o >= 0 ? darkf[a1 - o] : 0, outR = b2 - 1 + o < n ? darkf[b2 - 1 + o] : 0;
+    if (Math.min(outL, outR) >= 0.5) continue;
+    take(pr.tmin + (a1 + b2)/2*step, c * (4 + g) * 1.3, true);
+  }
+
+  // 3) 1本線：縦横だけ。4px外側はそれより明らかに明るい
+  if (P.lines && pr.axis && !cands.length) {
+    const o = Math.max(1, Math.round(4 / step));
+    for (const [a, b] of L) {
+      if ((b - a)*step < 2 || !inside(a, b) || a - o <= 0 || b + o >= n) continue;
+      const cv = maxIn(a, b);
+      if (cv < 0.8) continue;
+      let ls = 1, rs = 1;
+      for (let k = Math.max(0, a-o-2); k <= a-o; k++) ls = Math.min(ls, darkf[k]);
+      for (let k = b+o-1; k < Math.min(n, b+o+2); k++) rs = Math.min(rs, darkf[k]);
+      if (ls > 0.5 || rs > 0.5) continue;
+      take(pr.tmin + (a + b)/2*step, 0.3 * cv * (b - a) * step, true);
+    }
+  }
+  return cands;
+}
+
+function pick(cands){
+  let best = null;
+  for (const c of cands) if (!best || c.score > best.score) best = c;
+  return best;
+}
+
+/* 斜めの角度の当たり：1/4縮小で、領域を横切る黒い直線がいちばん濃く出る角度 */
+function obliqueGuesses(reg, M, P){
+  const planes = reg.planes.map(p => ({ nx:p.nx, ny:p.ny, d:p.d/4 }));
+  const bb = polyBBox(reg.poly);
+  const x0 = Math.max(0, Math.floor(bb.x1/4)), x1 = Math.min(M.w4, Math.ceil(bb.x2/4));
+  const y0 = Math.max(0, Math.floor(bb.y1/4)), y1 = Math.min(M.h4, Math.ceil(bb.y2/4));
+  const xs = [], ys = [], vs = [];
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    const cx = x + 0.5, cy = y + 0.5;
+    let ok = true;
+    for (const pl of planes) if (pl.nx*cx + pl.ny*cy > pl.d + 0.5) { ok = false; break; }
+    if (ok) { xs.push(cx); ys.push(cy); vs.push(M.D4[y*M.w4 + x]); }
+  }
+  if (xs.length < 50) return [];
+  const me = P.minEdge / 4, peaks = [];
+  for (let deg = 6; deg <= 174.001; deg += 0.5) {
+    if (deg > 84 && deg < 96) continue;
+    const a = deg*Math.PI/180, nx = Math.cos(a), ny = Math.sin(a);
+    let tmin = Infinity, tmax = -Infinity;
+    for (let i = 0; i < xs.length; i++) { const t = nx*xs[i] + ny*ys[i]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; }
+    const n = Math.floor(tmax - tmin) + 1, cnt = new Float64Array(n), sum = new Float64Array(n);
+    for (let i = 0; i < xs.length; i++) { const b = Math.floor(nx*xs[i] + ny*ys[i] - tmin); cnt[b]++; sum[b] += vs[i]; }
+    let cmax = 0; for (let i = 0; i < n; i++) if (cnt[i] > cmax) cmax = cnt[i];
+    let pk = 0;
+    for (let i = Math.floor(me); i < n - Math.floor(me); i++) if (cnt[i] >= 0.3*cmax && sum[i]/cnt[i] > pk) pk = sum[i]/cnt[i];
+    peaks.push([pk, deg]);
+  }
+  peaks.sort((a, b) => b[0] - a[0]);
+  const chosen = [];
+  for (const [, deg] of peaks) {
+    if (chosen.every(d => Math.abs(d - deg) > 2)) chosen.push(deg);
+    if (chosen.length >= 4) break;
+  }
+  return chosen;
+}
+
+function bestCut(reg, M, P, oblique){
+  if (!oblique) {
+    const S = samples(reg, M, 1);
+    if (!S.n) return null;
+    const cands = [];
+    for (const a of [0, Math.PI/2]) cands.push(...separators(profile(S, a, 1), 1, P));
+    return pick(cands);
+  }
+  const guesses = obliqueGuesses(reg, M, P);
+  if (!guesses.length) return null;
+  const S = samples(reg, M, 2);
+  if (!S.n) return null;
+  const cands = [];
+  for (const g of guesses)
+    for (let d = g - 0.6; d <= g + 0.601; d += 0.05) cands.push(...separators(profile(S, d*Math.PI/180, 2), 2, P));
+  return pick(cands);
+}
+
+/* 切り出したコマの辺を、中身にぴったり寄せ直す（溝の白い余白を落とす） */
+function refine(reg, M){
+  const poly = reg.poly;
+  if (poly.length < 3) return null;
+  const c = centroid(poly), edges = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i+1) % poly.length];
+    let nx = q[1] - p[1], ny = -(q[0] - p[0]);
+    const L = Math.hypot(nx, ny); if (L < 1e-9) continue;
+    nx /= L; ny /= L;
+    if (nx*(c[0]-p[0]) + ny*(c[1]-p[1]) > 0) { nx = -nx; ny = -ny; }
+    edges.push({ nx, ny, d: nx*p[0] + ny*p[1] });
+  }
+  if (edges.length < 3) return null;
+  for (const e of edges) {
+    let tmin = Infinity, tmax = -Infinity;
+    for (const p of poly) { const t = e.nx*p[0] + e.ny*p[1]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; }
+    e.tmin = tmin; e.n = Math.ceil(tmax - tmin) + 2;
+    e.cnt = new Int32Array(e.n); e.ik = new Int32Array(e.n);
+  }
+  const bb = polyBBox(poly);
+  const x0 = Math.max(0, Math.floor(bb.x1)), x1 = Math.min(M.W - 1, Math.ceil(bb.x2));
+  const y0 = Math.max(0, Math.floor(bb.y1)), y1 = Math.min(M.H - 1, Math.ceil(bb.y2));
+  for (let y = y0; y <= y1; y++) {
+    const row = y * M.W;
+    for (let x = x0; x <= x1; x++) {
+      let ok = true;
+      for (const e of edges) if (e.nx*x + e.ny*y > e.d + 0.5) { ok = false; break; }
+      if (!ok) continue;
+      const isInk = M.ink[row + x];
+      for (const e of edges) {
+        const b = Math.floor(e.nx*x + e.ny*y - e.tmin);
+        if (b < 0 || b >= e.n) continue;
+        e.cnt[b]++; if (isInk) e.ik[b]++;
+      }
+    }
+  }
+  for (const e of edges) {
+    let k = e.n - 1;
+    // 外側から、ほぼ白い行（インク3%以下）を削る。またいでいるフキダシの輪郭くらいは削れる
+    while (k >= 0) { if (e.cnt[k] > 0 && e.ik[k] > Math.max(2, 0.03 * e.cnt[k])) break; k--; }
+    if (k < 0) return null;
+    e.d = e.tmin + k + 1;
+  }
+  let np = [[0,0],[M.W,0],[M.W,M.H],[0,M.H]];
+  for (const e of edges) np = clipHalf(np, e.nx, e.ny, e.d);
+  return np.length >= 3 ? np : null;
+}
+
+/* 四角いコマの角に、2本の枠線（＋ページの端）で囲まれた四角いコマがあれば切り出す。
+   返り値は [切り出したコマ, 残り（L字）] か null */
+function carveCorner(poly, M, P){
+  if (!isRectPoly(poly)) return null;
+  const bb = polyBBox(poly);
+  const x1 = Math.round(bb.x1), y1 = Math.round(bb.y1), x2 = Math.round(bb.x2), y2 = Math.round(bb.y2);
+  const w = x2 - x1, h = y2 - y1;
+  const minW = Math.round(M.W * P.min), minH = Math.round(M.H * P.min);
+  if (w < 2*minW || h < 2*minH) return null;
+  // 横線は上下2px、縦線は左右2pxの太さを許す
+  const Hb = new Uint8Array(w*h), Vb = new Uint8Array(w*h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let hv = 0, vv = 0;
+    for (let k = -2; k <= 2; k++) {
+      const yy = y1 + y + k, xx = x1 + x + k;
+      if (yy >= 0 && yy < M.H && M.dark[yy*M.W + x1 + x]) hv = 1;
+      if (xx >= 0 && xx < M.W && M.dark[(y1 + y)*M.W + xx]) vv = 1;
+    }
+    Hb[y*w + x] = hv; Vb[y*w + x] = vv;
+  }
+  let best = null;
+  for (const fx of [false, true]) for (const fy of [false, true]) {
+    // 角を「左上」にそろえた座標 (u,v) で調べる。fx: 右の角, fy: 下の角
+    const X = u => fx ? w - 1 - u : u, Y = v => fy ? h - 1 - v : v;
+    const HP = new Float32Array(w*h), VP = new Float32Array(w*h);   // 角からの累積
+    for (let v = 0; v < h; v++) for (let u = 0; u < w; u++) {
+      const i = v*w + u, src = Y(v)*w + X(u);
+      HP[i] = Hb[src] + (u > 0 ? HP[i-1] : 0);
+      VP[i] = Vb[src] + (v > 0 ? VP[i-w] : 0);
+    }
+    const hcov = (v, u) => HP[v*w + u] / (u + 1);      // 行v の [0..u] が線
+    const vcov = (v, u) => VP[v*w + u] / (v + 1);      // 列u の [0..v] が線
+    let bestHere = null;
+    for (let v = minH; v < h - minH; v++) for (let u = minW; u < w - minW; u++) {
+      const area = (u + 1) * (v + 1);
+      if (area > 0.7*w*h || (bestHere && area <= bestHere.area)) continue;
+      if (hcov(v, u) < 0.85 || vcov(v, u) < 0.85) continue;
+      // 線の両側（7px先）がベタでなく、少なくとも片側は明るいこと＝ベタ塗りの縁ではない
+      if (v + 7 >= h || u + 7 >= w || v < 7 || u < 7) continue;
+      const hOut = hcov(v + 7, u), hIn = hcov(v - 7, u), vOut = vcov(v, u + 7), vIn = vcov(v, u - 7);
+      if (Math.max(hOut, hIn) >= 0.85 || Math.min(hOut, hIn) >= 0.5) continue;
+      if (Math.max(vOut, vIn) >= 0.85 || Math.min(vOut, vIn) >= 0.5) continue;
+      bestHere = { area, u, v, fx, fy };
+    }
+    if (bestHere && (!best || bestHere.area > best.area)) best = bestHere;
+  }
+  if (!best) return null;
+  const { u, v, fx, fy } = best;
+  const rx1 = fx ? x2 - u - 1 : x1, rx2 = fx ? x2 : x1 + u + 1;
+  const ry1 = fy ? y2 - v - 1 : y1, ry2 = fy ? y2 : y1 + v + 1;
+  const box = (a, b, c, d) => [[a,b],[c,b],[c,d],[a,d]];
+  const rect = box(rx1, ry1, rx2, ry2);
+  let rest;
+  if (!fx && !fy)      rest = [[rx2,y1],[x2,y1],[x2,y2],[x1,y2],[x1,ry2],[rx2,ry2]];   // 左上を抜いた残り
+  else if (fx && !fy)  rest = [[x1,y1],[rx1,y1],[rx1,ry2],[x2,ry2],[x2,y2],[x1,y2]];   // 右上
+  else if (!fx && fy)  rest = [[x1,y1],[x2,y1],[x2,y2],[rx2,y2],[rx2,ry1],[x1,ry1]];   // 左下
+  else                 rest = [[x1,y1],[x2,y1],[x2,ry1],[rx1,ry1],[rx1,y2],[x1,y2]];   // 右下
+  // 残りのL字のうち、抜いたコマの上下に続く腕がほぼ空っぽなら、腕を落として四角にする
+  // （書き出したとき、抜いたコマの所が黒く塗られた横長の画像にならないように）
+  const arm = fy ? [rx1, y1, rx2, ry1] : [rx1, ry2, rx2, y2];
+  let c = 0, k = 0;
+  for (let y = Math.max(0, arm[1]); y < Math.min(M.H, arm[3]); y++)
+    for (let x = Math.max(0, arm[0]); x < Math.min(M.W, arm[2]); x++) { c++; k += M.ink[y*M.W + x]; }
+  if (!c || k < 0.03 * c) rest = fx ? box(x1, y1, rx1, y2) : box(rx2, y1, x2, y2);
+  return { rect, rest, top: !fy };
+}
+
+function detect(pv, o){
+  const M = masks(pv, o);
+  const short = Math.min(M.W, M.H);
+  const P = { ...o,
+    minGap:  Math.max(3, short * o.gap),
+    maxGap:  short * 0.04,
+    minEdge: Math.max(10, short * o.min) };
+  const minW = M.W * o.min, minH = M.H * o.min;
+  const rtl = $('#rtl').checked;
+
+  const root = {
+    poly: [[0,0],[M.W,0],[M.W,M.H],[0,M.H]],
+    planes: [{nx:-1,ny:0,d:0},{nx:1,ny:0,d:M.W},{nx:0,ny:-1,d:0},{nx:0,ny:1,d:M.H}]
+  };
+  const leaves = [];
+
+  /* 切った順そのものが読み順になる。
+     横向きの切れ目なら上が先、縦向きなら（右→左のとき）右が先 */
+  (function cutTree(reg, depth){
+    if (leaves.length > 60 || depth > 14) { leaves.push(reg); return; }
+    let g = bestCut(reg, M, P, false);
+    // 斜めは、ページの12%以上ある大きな領域でだけ探す（小さいコマの中の斜線は絵か文字）
+    if (!g && o.oblique && polyArea(reg.poly) >= 0.12 * M.W * M.H) g = bestCut(reg, M, P, true);
+    if (!g) { leaves.push(reg); return; }
+    const lo = { poly: clipHalf(reg.poly,  g.nx,  g.ny,  g.t), planes: [...reg.planes, {nx: g.nx, ny: g.ny, d: g.t}] };
+    const hi = { poly: clipHalf(reg.poly, -g.nx, -g.ny, -g.t), planes: [...reg.planes, {nx:-g.nx, ny:-g.ny, d:-g.t}] };
+    let a, b;
+    if (Math.abs(g.ny) >= Math.abs(g.nx)) {
+      [a, b] = g.ny > 0 ? [lo, hi] : [hi, lo];
+    } else {
+      const right = g.nx > 0 ? hi : lo, left = g.nx > 0 ? lo : hi;
+      [a, b] = rtl ? [right, left] : [left, right];
+    }
+    cutTree(a, depth+1); cutTree(b, depth+1);
+  })(root, 0);
+
+  const out = [];
+  for (const leaf of leaves) {
+    if (leaf.poly.length < 3) continue;
+    const bb0 = polyBBox(leaf.poly);
+    if (bb0.w < minW || bb0.h < minH) continue;             // ノンブルや細い切れ端
+    const S = samples(leaf, M, 2);
+    let inkSum = 0; for (let i = 0; i < S.n; i++) inkSum += S.ik[i];
+    if (!S.n || inkSum / S.n < 0.10) continue;               // ほぼ白紙の切れ端（ページ端の余白など）
+    const poly = refine(leaf, M) || leaf.poly;
+    const bb = polyBBox(poly);
+    if (bb.w < minW * 0.7 || bb.h < minH * 0.7) continue;
+    const norm = q => q.map(p => [p[0]/M.W, p[1]/M.H]);
+    // 角の切り出しは、ページの15%以上ある大きなコマだけ（合体している疑いがあるもの）
+    const cv = bb.w * bb.h >= 0.15 * M.W * M.H ? carveCorner(poly, M, P) : null;
+    if (cv) {
+      // 上の角から抜いたコマは残りより先に読む、下の角なら後
+      const rest = cv.rest.length === 4 ? (refine({ poly: cv.rest }, M) || cv.rest) : cv.rest;
+      const pair = cv.top ? [cv.rect, rest] : [rest, cv.rect];
+      for (const q of pair) out.push({ poly: norm(q) });
+    } else out.push({ poly: norm(poly) });
+  }
+  return out;
+}
+
+/* 読み順に並べる：行にまとめて、上から／行の中は右から */
+function order(shapes){
+  const rtl = $('#rtl').checked;
+  const ss = shapes.map(s => ({ s, bb: polyBBox(s.poly) })).sort((a,b) => a.bb.y1 - b.bb.y1);
+  const rows = [];
+  for (const it of ss) {
+    // 行の判定はその行の「最初のコマ」とだけ比べる。
+    // 行の範囲を広げていくと、背の高いコマが下の段まで飲み込んでしまう
+    const row = rows.find(w => {
+      const ov = Math.min(w.y2, it.bb.y2) - Math.max(w.y1, it.bb.y1);
+      return ov > Math.min(w.y2 - w.y1, it.bb.h) * 0.45;
+    });
+    if (row) row.items.push(it);
+    else rows.push({ y1: it.bb.y1, y2: it.bb.y2, items: [it] });
+  }
+  rows.sort((a,b) => a.y1 - b.y1);
+  const out = [];
+  for (const row of rows) {
+    row.items.sort((a,b) => rtl ? b.bb.x2 - a.bb.x2 : a.bb.x1 - b.bb.x1);
+    out.push(...row.items.map(it => it.s));
+  }
+  return out;
+}
+
+/* ============================================================
+   描画
+============================================================ */
+function renderAll(){ renderThumbs(); renderStage(); renderShapes(); renderPanelList(); }
+
+function renderThumbs(){
+  const box = $('#thumbs'); box.innerHTML = '';
+  $('#drop').style.display = pages.length ? 'none' : 'flex';
+  $('#pageCnt').textContent = pages.length ? `${pages.length}ページ` : '0';
+  pages.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.className = 'thumb' + (i === cur ? ' on' : '');
+    const c = document.createElement('canvas');
+    const s = 150 / p.pv.width;
+    c.width = 150; c.height = Math.max(1, Math.round(p.pv.height * s));
+    c.getContext('2d').drawImage(p.pv, 0, 0, c.width, c.height);
+    el.appendChild(c);
+    el.insertAdjacentHTML('beforeend',
+      `<div class="cnt">${p.shapes.length}</div><div class="x" title="このページを外す">×</div><div class="nm">${esc(p.name)}</div>`);
+    el.onclick = e => {
+      if (e.target.classList.contains('x')) { pages.splice(i,1); if (cur >= pages.length) cur = pages.length-1; sel = -1; renderAll(); return; }
+      cur = i; sel = -1; renderAll();
+    };
+    box.appendChild(el);
+  });
+}
+
+function renderStage(){
+  const p = pages[cur];
+  $('#stage').style.display = p ? 'block' : 'none';
+  $('#blank').style.display = p ? 'none' : 'block';
+  $('#curName').textContent = p ? p.name : '—';
+  $('#curSize').textContent = p ? `${p.W} × ${p.H} px` : '';
+  if (!p) return;
+  const cv = $('#cv');
+  cv.width = p.pv.width; cv.height = p.pv.height;
+  cv.getContext('2d').drawImage(p.pv, 0, 0);
+  const avail = $('#editBody').clientWidth - 28;
+  $('#stage').style.width = Math.max(120, Math.round(avail * zoom)) + 'px';
+  $('#ov').setAttribute('viewBox', `0 0 ${p.pv.width} ${p.pv.height}`);
+}
+
+/* 画面の1pxがSVG何単位か（ハンドルの大きさを画面基準で揃えるため） */
+function uscale(){
+  const p = pages[cur]; if (!p) return 1;
+  const w = $('#stage').clientWidth || p.pv.width;
+  return p.pv.width / w;
+}
+
+function renderShapes(){
+  const ov = $('#ov'), p = pages[cur];
+  if (!p) { ov.innerHTML = ''; return; }
+  const W = p.pv.width, H = p.pv.height, k = uscale();
+  let h = '';
+  p.shapes.forEach((s, i) => {
+    const pts = s.poly.map(pt => `${(pt[0]*W).toFixed(1)},${(pt[1]*H).toFixed(1)}`).join(' ');
+    h += `<polygon class="mk${i===sel?' on':''}" data-i="${i}" points="${pts}" stroke-width="${(2*k).toFixed(2)}"/>`;
+  });
+  p.shapes.forEach((s, i) => {
+    const bb = polyBBox(s.poly);
+    h += `<g class="num${i===sel?' on':''}" transform="translate(${(bb.x1*W).toFixed(1)},${(bb.y1*H).toFixed(1)})" pointer-events="none">
+            <rect width="${22*k}" height="${18*k}" rx="${3*k}"/>
+            <text x="${11*k}" y="${13*k}" font-size="${12*k}">${i+1}</text></g>`;
+  });
+  if (sel >= 0 && p.shapes[sel]) p.shapes[sel].poly.forEach((pt, j) => {
+    h += `<circle class="hv" data-v="${j}" cx="${(pt[0]*W).toFixed(1)}" cy="${(pt[1]*H).toFixed(1)}" r="${6*k}" stroke-width="${2*k}"/>`;
+  });
+  ov.innerHTML = h;
+  $('#shapeCnt').textContent = p.shapes.length + 'コマ';
+}
+
+function panelCanvas(pv, s, maxW, maxH){
+  const W = pv.width, H = pv.height, bb = polyBBox(s.poly);
+  const sx = bb.x1*W, sy = bb.y1*H, sw = Math.max(1, bb.w*W), sh = Math.max(1, bb.h*H);
+  const k = Math.min(maxW/sw, maxH/sh, 1);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(sw*k)); c.height = Math.max(1, Math.round(sh*k));
+  const g = c.getContext('2d');
+  const fill = $('#fill').value;
+  g.fillStyle = fill === 'none' ? '#888' : fill;
+  g.fillRect(0, 0, c.width, c.height);
+  if (!isRectPoly(s.poly)) {
+    g.beginPath();
+    s.poly.forEach((pt, j) => { const x=(pt[0]*W-sx)*k, y=(pt[1]*H-sy)*k; j ? g.lineTo(x,y) : g.moveTo(x,y); });
+    g.closePath(); g.clip();
+  }
+  g.drawImage(pv, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return c;
+}
+
+function renderPanelList(){
+  const box = $('#panelList'); box.innerHTML = '';
+  const p = pages[cur]; if (!p) return;
+  p.shapes.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'pitem' + (i === sel ? ' on' : '');
+    el.innerHTML = `<div class="no">${i+1}</div>`;
+    el.appendChild(panelCanvas(p.pv, s, 104, 78));
+    const ops = document.createElement('div'); ops.className = 'ops';
+    ops.innerHTML = `<button class="mini" data-o="up">↑</button><button class="mini" data-o="dn">↓</button><button class="mini warn" data-o="rm">×</button>`;
+    el.appendChild(ops);
+    el.onclick = e => {
+      const o = e.target.dataset.o;
+      if (o) {
+        snap();
+        if (o === 'up' && i > 0) p.shapes.splice(i-1, 0, p.shapes.splice(i,1)[0]);
+        if (o === 'dn' && i < p.shapes.length-1) p.shapes.splice(i+1, 0, p.shapes.splice(i,1)[0]);
+        if (o === 'rm') { p.shapes.splice(i,1); sel = -1; }
+        renderShapes(); renderPanelList(); renderThumbs();
+        return;
+      }
+      sel = i; renderShapes(); renderPanelList();
+    };
+    box.appendChild(el);
+  });
+}
+
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ============================================================
+   マウス操作
+============================================================ */
+const ov = $('#ov');
+let drag = null;
+
+const ptN = e => {
+  const b = ov.getBoundingClientRect();
+  return [clamp((e.clientX - b.left) / b.width), clamp((e.clientY - b.top) / b.height)];
+};
+const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b, v));
+const toSvg = (p, page) => [p[0]*page.pv.width, p[1]*page.pv.height];
+
+function addEl(name, attrs){
+  const el = document.createElementNS(SVGNS, name);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  ov.appendChild(el);
+  return el;
+}
+
+ov.addEventListener('pointerdown', e => {
+  const p = pages[cur]; if (!p) return;
+  const n = ptN(e), t = e.target, k = uscale();
+
+  if (splitMode) {
+    snap();
+    const a = toSvg(n, p);
+    drag = { mode:'split', n0:n, el: addEl('line', {class:'cutline', x1:a[0], y1:a[1], x2:a[0], y2:a[1], 'stroke-width':2*k}) };
+  } else if (t.classList.contains('hv')) {
+    const j = +t.dataset.v;
+    if (e.altKey) {                                   // option＋クリックで角を消す
+      const poly = p.shapes[sel].poly;
+      if (poly.length > 3) { snap(); poly.splice(j,1); renderShapes(); renderPanelList(); renderThumbs(); }
+      return;
+    }
+    snap();
+    drag = { mode:'vertex', i:sel, v:j, el:t, poly: ov.querySelector(`.mk[data-i="${sel}"]`), moved:false };
+  } else if (t.classList.contains('mk')) {
+    const i = +t.dataset.i;
+    if (i !== sel) { sel = i; renderShapes(); renderPanelList(); }
+    snap();
+    drag = { mode:'move', i, n0:n, start: p.shapes[i].poly.map(q => q.slice()),
+             el: ov.querySelector(`.mk[data-i="${i}"]`), moved:false };
+  } else {
+    if (sel >= 0) { sel = -1; renderShapes(); renderPanelList(); }
+    const a = toSvg(n, p);
+    drag = { mode:'new', n0:n, el: addEl('rect', {class:'band', x:a[0], y:a[1], width:0, height:0, 'stroke-width':2*k}) };
+  }
+  ov.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+ov.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = pages[cur], n = ptN(e), W = p.pv.width, H = p.pv.height;
+
+  if (drag.mode === 'new') {
+    const x1 = Math.min(drag.n0[0], n[0]), y1 = Math.min(drag.n0[1], n[1]);
+    const w = Math.abs(n[0] - drag.n0[0]), h = Math.abs(n[1] - drag.n0[1]);
+    drag.el.setAttribute('x', x1*W); drag.el.setAttribute('y', y1*H);
+    drag.el.setAttribute('width', w*W); drag.el.setAttribute('height', h*H);
+    drag.cur = { x:x1, y:y1, w, h };
+  } else if (drag.mode === 'split') {
+    const a = toSvg(n, p);
+    drag.el.setAttribute('x2', a[0]); drag.el.setAttribute('y2', a[1]);
+    drag.n1 = n;
+  } else if (drag.mode === 'move') {
+    const dx = n[0] - drag.n0[0], dy = n[1] - drag.n0[1];
+    const poly = drag.start.map(q => [clamp(q[0]+dx), clamp(q[1]+dy)]);
+    p.shapes[drag.i].poly = poly; drag.moved = true;
+    drag.el.setAttribute('points', poly.map(q => `${q[0]*W},${q[1]*H}`).join(' '));
+  } else if (drag.mode === 'vertex') {
+    const poly = p.shapes[drag.i].poly;
+    poly[drag.v] = [n[0], n[1]]; drag.moved = true;
+    drag.el.setAttribute('cx', n[0]*W); drag.el.setAttribute('cy', n[1]*H);
+    if (drag.poly) drag.poly.setAttribute('points', poly.map(q => `${q[0]*W},${q[1]*H}`).join(' '));
+  }
+});
+
+ov.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const p = pages[cur];
+
+  if (drag.mode === 'new') {
+    drag.el.remove();
+    const r = drag.cur;
+    if (r && r.w > 0.012 && r.h > 0.012) {
+      p.shapes.push({ poly: [[r.x,r.y],[r.x+r.w,r.y],[r.x+r.w,r.y+r.h],[r.x,r.y+r.h]] });
+      sel = p.shapes.length - 1;
+    } else undoStack.pop();
+  } else if (drag.mode === 'split') {
+    drag.el.remove();
+    if (drag.n1) splitBy(drag.n0, drag.n1); else undoStack.pop();
+  } else if (!drag.moved) {
+    undoStack.pop();                                   // 選んだだけなら履歴に残さない
+  }
+  drag = null;
+  renderShapes(); renderPanelList(); renderThumbs();
+});
+
+/* 引いた線でコマを2つに割る */
+function splitBy(a, b){
+  const p = pages[cur];
+  const dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy);
+  if (L < 0.02) { undoStack.pop(); return; }
+  const nx = dy/L, ny = -dx/L, d = nx*a[0] + ny*a[1];
+  const out = []; let hit = 0;
+  for (const s of p.shapes) {
+    const A = clipHalf(s.poly, nx, ny, d), B = clipHalf(s.poly, -nx, -ny, -d);
+    if (A.length >= 3 && B.length >= 3 && polyArea(A) > 4e-4 && polyArea(B) > 4e-4) {
+      out.push({poly:A}, {poly:B}); hit++;
+    } else out.push(s);
+  }
+  if (!hit) { undoStack.pop(); return; }
+  p.shapes = order(out);
+  sel = -1;
+}
+
+/* 辺をダブルクリックで角を増やす */
+ov.addEventListener('dblclick', e => {
+  const p = pages[cur]; if (!p || !e.target.classList.contains('mk')) return;
+  const i = +e.target.dataset.i, poly = p.shapes[i].poly, n = ptN(e);
+  let bi = 0, bd = Infinity;
+  for (let j = 0; j < poly.length; j++) {
+    const a = poly[j], b = poly[(j+1)%poly.length];
+    const vx = b[0]-a[0], vy = b[1]-a[1], L2 = vx*vx + vy*vy || 1;
+    let t = ((n[0]-a[0])*vx + (n[1]-a[1])*vy) / L2; t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(n[0]-(a[0]+vx*t), n[1]-(a[1]+vy*t));
+    if (d < bd) { bd = d; bi = j; }
+  }
+  snap();
+  poly.splice(bi+1, 0, [n[0], n[1]]);
+  sel = i; renderShapes(); renderPanelList();
+});
+
+function snap(){
+  if (cur < 0) return;
+  undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()) })) });
+  if (undoStack.length > 60) undoStack.shift();
+}
+function undo(){
+  const u = undoStack.pop(); if (!u || !pages[u.i]) return;
+  pages[u.i].shapes = u.shapes; cur = u.i; sel = -1; renderAll();
+}
+
+/* ============================================================
+   書き出し
+============================================================ */
+function ext(){ return $('#fmt').value === 'jpg' ? 'jpg' : 'png'; }
+
+async function cropBlob(full, p, s, o){
+  const poly0 = s.poly.map(q => [q[0]*p.W, q[1]*p.H]);
+  const poly = offsetPoly(poly0, o.grow, p.W, p.H);
+  const bb = polyBBox(poly);
+  const x = Math.round(bb.x1), y = Math.round(bb.y1);
+  const w = Math.max(1, Math.round(bb.w)), h = Math.max(1, Math.round(bb.h));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  let fill = $('#fill').value;
+  if (fill === 'none' && ext() === 'jpg') fill = '#ffffff';     // JPEGは透明を持てない
+  const rect = isRectPoly(poly);
+  if (fill !== 'none') { g.fillStyle = fill; g.fillRect(0, 0, w, h); }
+  if (!rect) {
+    g.beginPath();
+    poly.forEach((q, j) => { const px = q[0]-x, py = q[1]-y; j ? g.lineTo(px, py) : g.moveTo(px, py); });
+    g.closePath(); g.clip();
+  }
+  g.drawImage(full, x, y, w, h, 0, 0, w, h);
+  const q = +$('#quality').value / 100;
+  const blob = await new Promise(res => c.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', q));
+  c.width = c.height = 0;
+  return blob;
+}
+
+async function exportAll(){
+  if (!pages.length) return;
+  const total = pages.reduce((n,p) => n + p.shapes.length, 0);
+  if (!total) { alert('コマがありません'); return; }
+  const o = params(), files = [], pre = $('#prefix').value.trim(), serial = $('#serial').checked;
+  let n = 0, done = 0;
+  busy(true, '書き出し中…', 0);
+  try {
+    for (const p of pages) {
+      if (!p.shapes.length) continue;
+      busy(true, `${p.name} を原寸で読み込み中…`, done/total*100);
+      await new Promise(r => setTimeout(r, 0));
+      const full = await decodeFile(p.file);
+      for (let i = 0; i < p.shapes.length; i++) {
+        const blob = await cropBlob(full, p, p.shapes[i], o);
+        const no = String(serial ? ++n : i+1).padStart(serial ? 3 : 2, '0');
+        const base = pre ? `${pre}_${serial ? '' : p.base + '_'}` : `${p.base}_`;
+        files.push({ name: `${base}${no}.${ext()}`.replace(/_+/g,'_'), data: new Uint8Array(await blob.arrayBuffer()) });
+        done++;
+        busy(true, `書き出し中… ${done}/${total}`, done/total*100);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      full.width = full.height = 0;
+    }
+    busy(true, 'ZIPにまとめています…', 100);
+    await new Promise(r => setTimeout(r, 30));
+    const zip = makeZip(files);
+    busy(false);
+    await save(zip, (pre || 'コマ') + '.zip');
+  } catch (e) {
+    console.error(e); alert('書き出しに失敗しました\n' + e.message);
+  }
+  busy(false);
+}
+
+/* 保存。ふつうのブラウザ（GitHub Pagesなど）はそのままダウンロード、
+   Artifactとして公開したときだけ、そちらの保存口を通す */
+let dlNs;
+async function save(blob, name){
+  if (window.claude && typeof claude.use === 'function') {
+    if (dlNs === undefined) { try { dlNs = await claude.use('downloads'); } catch { dlNs = null; } }
+    if (dlNs) {
+      try { await dlNs.save({ filename:name, data:blob }); }
+      catch (e) { if (e && e.code !== 'declined') alert('保存できませんでした\n' + (e.message || e.code)); }
+      return;
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* --- ZIP（無圧縮 store） --- */
+const CRC = (() => { const t = new Uint32Array(256);
+  for (let i=0;i<256;i++){ let c=i; for (let k=0;k<8;k++) c = c&1 ? 0xEDB88320 ^ (c>>>1) : c>>>1; t[i]=c>>>0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i=0;i<u8.length;i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF) >>> 0; }
+
+function makeZip(files){
+  const enc = new TextEncoder(), parts = [], central = [];
+  const now = new Date();
+  const dTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  const dDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  let off = 0;
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new Uint8Array(30 + nm.length), v = new DataView(lh.buffer);
+    v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x0800, true);
+    v.setUint16(10, dTime, true); v.setUint16(12, dDate, true);
+    v.setUint32(14, crc, true); v.setUint32(18, sz, true); v.setUint32(22, sz, true);
+    v.setUint16(26, nm.length, true);
+    lh.set(nm, 30);
+    parts.push(lh, f.data);
+    const ch = new Uint8Array(46 + nm.length), w = new DataView(ch.buffer);
+    w.setUint32(0, 0x02014b50, true); w.setUint16(4, 20, true); w.setUint16(6, 20, true); w.setUint16(8, 0x0800, true);
+    w.setUint16(12, dTime, true); w.setUint16(14, dDate, true);
+    w.setUint32(16, crc, true); w.setUint32(20, sz, true); w.setUint32(24, sz, true);
+    w.setUint16(28, nm.length, true); w.setUint32(42, off, true);
+    ch.set(nm, 46);
+    central.push(ch);
+    off += lh.length + sz;
+  }
+  const cdSize = central.reduce((n,c) => n + c.length, 0);
+  const end = new Uint8Array(22), e = new DataView(end.buffer);
+  e.setUint32(0, 0x06054b50, true);
+  e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, end], {type:'application/zip'});
+}
+
+function busy(on, text, pct){
+  $('#busy').classList.toggle('on', !!on);
+  if (text) $('#busyT').textContent = text;
+  $('#busyB').style.width = (pct == null ? 0 : pct) + '%';
+}
+
+/* ============================================================
+   UI 配線
+============================================================ */
+$('#btnAdd').onclick = () => $('#file').click();
+$('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+$('#drop').onclick = () => $('#file').click();
+$('#btnClear').onclick = () => { if (pages.length && confirm('全部消します。よろしいですか？')) { pages = []; cur = -1; sel = -1; undoStack.length = 0; renderAll(); } };
+$('#btnExport').onclick = exportAll;
+
+$('#btnSplit').onclick = () => {
+  splitMode = !splitMode;
+  $('#btnSplit').classList.toggle('on', splitMode);
+  ov.classList.toggle('split', splitMode);
+};
+$('#btnRect').onclick = () => {
+  const p = pages[cur]; if (!p || sel < 0) return;
+  snap();
+  const bb = polyBBox(p.shapes[sel].poly);
+  p.shapes[sel].poly = [[bb.x1,bb.y1],[bb.x2,bb.y1],[bb.x2,bb.y2],[bb.x1,bb.y2]];
+  renderShapes(); renderPanelList(); renderThumbs();
+};
+$('#btnDetect').onclick = () => { const p = pages[cur]; if (!p) return; snap(); p.shapes = detect(p.pv, params()); sel = -1; renderAll(); };
+$('#btnDetectAll').onclick = async () => {
+  if (!pages.length) return;
+  busy(true, '検出中…', 0);
+  for (let i = 0; i < pages.length; i++) {
+    busy(true, `検出中… ${i+1}/${pages.length}`, i/pages.length*100);
+    await new Promise(r => setTimeout(r, 0));
+    pages[i].shapes = detect(pages[i].pv, params());
+  }
+  busy(false); sel = -1; renderAll();
+};
+$('#btnClearShapes').onclick = () => { const p = pages[cur]; if (!p) return; snap(); p.shapes = []; sel = -1; renderAll(); };
+$('#btnReorder').onclick = () => { const p = pages[cur]; if (!p) return; snap(); p.shapes = order(p.shapes); sel = -1; renderShapes(); renderPanelList(); };
+
+$('#zoom').oninput = e => { zoom = +e.target.value / 100; $('#zoomV').textContent = e.target.value + '%'; renderStage(); renderShapes(); };
+$('#fmt').onchange = e => { $('#rowQ').style.display = e.target.value === 'jpg' ? 'flex' : 'none'; };
+$('#quality').oninput = e => $('#vQ').textContent = e.target.value;
+$('#fill').onchange = () => renderPanelList();
+$('#rtl').onchange = () => { const p = pages[cur]; if (p) { snap(); p.shapes = order(p.shapes); renderShapes(); renderPanelList(); } };
+$('#obl').onchange = () => redetectSoon();
+$('#lines').onchange = () => redetectSoon();
+
+const live = { sWhite:['vWhite', v => v], sGap:['vGap', v => (v/10).toFixed(1)+'%'], sTol:['vTol', v => v+'%'],
+               sMin:['vMin', v => v+'%'], sGrow:['vGrow', v => v+'px'] };
+for (const id in live) {
+  const [out, fmt] = live[id];
+  $('#'+id).oninput = e => {
+    $('#'+out).textContent = fmt(+e.target.value);
+    if (id !== 'sGrow') redetectSoon();
+  };
+}
+let redetectTimer;
+function redetectSoon(){
+  clearTimeout(redetectTimer);
+  redetectTimer = setTimeout(() => {
+    const p = pages[cur]; if (!p) return;
+    p.shapes = detect(p.pv, params()); sel = -1; renderAll();
+  }, 220);
+}
+
+document.addEventListener('keydown', e => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0 && pages[cur]) {
+    e.preventDefault(); snap(); pages[cur].shapes.splice(sel,1); sel = -1; renderShapes(); renderPanelList(); renderThumbs(); return;
+  }
+  if (e.key === 'Escape') {
+    if (splitMode) $('#btnSplit').click();
+    sel = -1; renderShapes(); renderPanelList();
+  }
+  if (e.key === 'ArrowDown' && cur < pages.length-1) { e.preventDefault(); cur++; sel = -1; renderAll(); }
+  if (e.key === 'ArrowUp' && cur > 0) { e.preventDefault(); cur--; sel = -1; renderAll(); }
+});
+
+let dragDepth = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); if (++dragDepth === 1) $('#dropBig').classList.add('on'); });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; $('#dropBig').classList.remove('on'); } });
+window.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('#dropBig').classList.remove('on');
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+window.addEventListener('resize', () => { renderStage(); renderShapes(); });
+window.addEventListener('beforeunload', e => { if (pages.length) { e.preventDefault(); e.returnValue = ''; } });
+
+renderAll();
+</script>
+</body>
+</html>
