@@ -232,7 +232,7 @@
     <div id="editBody">
       <div id="toolHint"></div>
       <div id="stage" style="display:none"><canvas id="cv"></canvas><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
-      <div class="blank" id="blank">左に原稿をドロップしてください<br><span style="font-size:12px;color:var(--muted)">PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
+      <div class="blank" id="blank" style="cursor:pointer">ここに原稿をドロップ（どこに落としてもOK）<br><span style="font-size:12px;color:var(--muted)">クリックでも選べます。PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
       <div id="dropBig">ここに落とす</div>
     </div>
   </div>
@@ -257,17 +257,20 @@
     <div class="colbody" id="panelList"></div>
     <div class="set">
       <div class="row"><span>形式</span>
-        <select id="fmt" style="flex:1"><option value="png">PNG（劣化なし）</option><option value="jpg">JPEG</option></select>
+        <select id="fmt" style="flex:1"><option value="jpg" selected>JPEG</option><option value="png">PNG（劣化なし）</option></select>
       </div>
-      <div class="row" id="rowQ" style="display:none"><span>画質</span><input type="range" id="quality" min="50" max="100" value="92"><span class="v" id="vQ">92</span></div>
+      <div class="row" id="rowQ"><span>画質</span><input type="range" id="quality" min="50" max="100" value="92"><span class="v" id="vQ">92</span></div>
       <div class="row" title="コマの枠線のどこで切り抜くか"><span>切る位置</span>
         <select id="cutPos" style="flex:1"><option value="in" selected>枠線の内側（線を含めない）</option><option value="mid">枠線の中央</option><option value="out">枠線の外側（線を含める）</option></select>
       </div>
       <div class="row"><span>コマ外の塗り</span>
         <select id="fill" style="flex:1"><option value="#000000">黒</option><option value="#ffffff">白</option><option value="none">透明（PNGのみ）</option></select>
       </div>
-      <div class="row"><span>ファイル名</span><input type="text" id="prefix" placeholder="ページ名を使う" style="flex:1;min-width:0"></div>
-      <div class="row"><label class="ck"><input type="checkbox" id="serial"> 全ページ通し番号にする</label></div>
+      <div class="row" title="ファイル名は 作品名_話数_連番（全ページ通し）。原稿を落とすと、元のファイル名から自動で入ります"><span>作品名</span><input type="text" id="title" placeholder="例 morahara" style="flex:1;min-width:0"></div>
+      <div class="row"><span>話数</span><input type="text" id="ep" placeholder="例 001" style="flex:1;min-width:0"></div>
+      <div class="row" style="color:var(--muted);font-size:11px" id="nameEx"></div>
+      <div class="row" style="gap:6px"><button id="btnSaveWork" class="mini" title="枠・塗り・設定をまとめた作業ファイル（.json）を保存する">作業を保存</button><button id="btnLoadWork" class="mini" title="保存した作業ファイルを読み込む。原稿は、読み込みの前でも後でも、同じファイルを落とせば続きから">作業を読み込み</button>
+        <input type="file" id="workFile" accept=".json,application/json" hidden></div>
     </div>
   </div>
 </div>
@@ -998,6 +1001,65 @@ function makePreview(src){
   return c;
 }
 
+/* ファイル名の頭：作品名_話数 */
+function nameStem(){
+  return [$('#title').value.trim(), $('#ep').value.trim()].filter(Boolean).join('_').replace(/[\\/:*?"<>|]/g, '_');
+}
+function updateNameEx(){
+  const st = nameStem();
+  $('#nameEx').textContent = '例：' + (st ? `${st}_001` : 'ページ名_01') + '.' + ext();
+}
+/* 元のファイル名（作品名_話数_ページ）から作品名と話数を拾う。欄が空のときだけ入れる */
+function guessNames(base){
+  const m = base.match(/^(.+?)[_\- ](\d+)[_\- ]\d+$/) || base.match(/^(.+?)[_\- ](\d+)$/);
+  if (!m) return;
+  if (!$('#title').value.trim()) $('#title').value = m[1];
+  if (!$('#ep').value.trim()) $('#ep').value = m[2];
+  updateNameEx();
+}
+
+/* ---- 作業ファイル（.json）：枠・塗り・設定。原稿そのものは入れない（ファイル名で照らし合わせる） ---- */
+let pendingWork = null;                                  // 読み込んだが、まだ原稿が来ていないページ（名前→shapes）
+const SETTING_IDS = ['sWhite','sGap','sTol','sMin','sGrow','obl','lines','rtl','fmt','quality','cutPos','fill','title','ep','rimW','rimBrushSize','eraseSize','whiteW'];
+const cleanShape = s => {
+  const o = {};
+  for (const k of ['poly','link','gut','seeds','rects','erase','rims','rimStrokes','whitePen']) if (s[k] !== undefined && s[k] !== false && !(Array.isArray(s[k]) && !s[k].length)) o[k] = s[k];
+  return o;
+};
+function saveWork(){
+  if (!pages.length && !pendingWork) { alert('保存するものがありません'); return; }
+  const settings = {};
+  for (const id of SETTING_IDS) { const el = $('#'+id); if (el) settings[id] = el.type === 'checkbox' ? el.checked : el.value; }
+  const work = { app: 'koma-split', version: 1, savedAt: new Date().toISOString(), settings,
+    pages: pages.map(p => ({ name: p.name, W: p.W, H: p.H, shapes: p.shapes.map(cleanShape) })) };
+  if (pendingWork) for (const [name, w] of Object.entries(pendingWork)) if (!work.pages.some(q => q.name === name)) work.pages.push(w);
+  const stem = nameStem() || (pages[0] ? pages[0].base : 'コマ');
+  save(new Blob([JSON.stringify(work)], { type: 'application/json' }), `${stem}_作業.json`);
+}
+async function loadWork(file){
+  let work;
+  try { work = JSON.parse(await file.text()); } catch { alert('作業ファイルを読めませんでした'); return; }
+  if (!work || work.app !== 'koma-split' || !Array.isArray(work.pages)) { alert('このアプリの作業ファイルではありません'); return; }
+  for (const [id, v] of Object.entries(work.settings || {})) {
+    const el = $('#'+id); if (!el) continue;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  }
+  $('#vRimW') && ($('#vRimW').textContent = $('#rimW').value);
+  $('#vWhiteW') && ($('#vWhiteW').textContent = $('#whiteW').value);
+  $('#rowQ').style.display = ext() === 'jpg' ? 'flex' : 'none';
+  pendingWork = {};
+  let applied = 0;
+  for (const w of work.pages) {
+    const p = pages.find(q => q.name === w.name);
+    if (p) { p.shapes = w.shapes.map(x => ({ ...x })); applied++; }
+    else pendingWork[w.name] = w;
+  }
+  if (!Object.keys(pendingWork).length) pendingWork = null;
+  undoStack.length = 0; sel = -1; updateNameEx(); renderAll();
+  const wait = pendingWork ? Object.keys(pendingWork).length : 0;
+  alert(`作業ファイルを読み込みました。\n反映したページ：${applied}` + (wait ? `\nまだ原稿が来ていないページ：${wait}（同じ名前の原稿を落とすと、自動検出の代わりにこの枠を使います）` : ''));
+}
+
 async function addFiles(list){
   const files = [...list].filter(readable);
   if (!files.length) { if (list.length) alert('読める形式がありませんでした（PSD / PSB / TIFF / PNG / JPEG）'); return; }
@@ -1011,7 +1073,10 @@ async function addFiles(list){
       const full = await decodeFile(f);
       const p = { name:f.name, base:f.name.replace(/\.[^.]+$/,''), file:f, W:full.width, H:full.height, pv:makePreview(full), shapes:[] };
       full.width = full.height = 0;
-      p.shapes = detect(p.pv, params());
+      const w = pendingWork && pendingWork[f.name];
+      if (w) { p.shapes = w.shapes.map(x => ({ ...x })); delete pendingWork[f.name]; if (!Object.keys(pendingWork).length) pendingWork = null; }
+      else p.shapes = detect(p.pv, params());
+      guessNames(p.base);
       pages.push(p);
     } catch (e) {
       console.error(e); alert(`${f.name} を読めませんでした\n${e.message}`);
@@ -2014,7 +2079,7 @@ async function exportAll(){
   if (!pages.length) return;
   const total = pages.reduce((n,p) => n + groupsOf(p).length, 0);
   if (!total) { alert('コマがありません'); return; }
-  const o = params(), files = [], pre = $('#prefix').value.trim(), serial = $('#serial').checked;
+  const o = params(), files = [], stem = nameStem();
   let n = 0, done = 0;
   busy(true, '書き出し中…', 0);
   try {
@@ -2029,11 +2094,9 @@ async function exportAll(){
         busy(true, `書き出し中… ${done+1}/${total}` + (idx.length > 1 ? '（つないだコマの塗り）' : ''), done/total*100);
         await new Promise(r => setTimeout(r, 0));
         const blob = idx.length > 1 ? await cropGroupBlob(full, p, idx, o, dark) : await cropBlob(full, p, p.shapes[idx[0]], o, dark);
-        // 番号は1枚ごと。つないだものは「01-03」のようにコマの番号の範囲を付ける
-        const pad = v => String(v).padStart(serial ? 3 : 2, '0');
-        const no = serial ? pad(++n) : idx.length > 1 ? pad(idx[0]+1) + '-' + pad(idx[idx.length-1]+1) : pad(idx[0]+1);
-        const base = pre ? `${pre}_${serial ? '' : p.base + '_'}` : `${p.base}_`;
-        files.push({ name: `${base}${no}.${ext()}`.replace(/_+/g,'_'), data: new Uint8Array(await blob.arrayBuffer()) });
+        // 作品名_話数_連番（全ページ通しの3桁。つないだコマは1枚で1番）。作品名も話数も空なら ページ名_01
+        const name = stem ? `${stem}_${String(++n).padStart(3, '0')}` : `${p.base}_${String(gi+1).padStart(2, '0')}`;
+        files.push({ name: `${name}.${ext()}`, data: new Uint8Array(await blob.arrayBuffer()) });
         done++;
         busy(true, `書き出し中… ${done}/${total}`, done/total*100);
         await new Promise(r => setTimeout(r, 0));
@@ -2044,7 +2107,7 @@ async function exportAll(){
     await new Promise(r => setTimeout(r, 30));
     const zip = makeZip(files);
     busy(false);
-    await save(zip, (pre || 'コマ') + '.zip');
+    await save(zip, (stem || 'コマ') + '.zip');
   } catch (e) {
     console.error(e); alert('書き出しに失敗しました\n' + e.message);
   }
@@ -2117,6 +2180,11 @@ function busy(on, text, pct){
 $('#btnAdd').onclick = () => $('#file').click();
 $('#file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
 $('#drop').onclick = () => $('#file').click();
+$('#blank').onclick = () => $('#file').click();
+$('#btnSaveWork').onclick = saveWork;
+$('#btnLoadWork').onclick = () => $('#workFile').click();
+$('#workFile').onchange = e => { if (e.target.files[0]) loadWork(e.target.files[0]); e.target.value = ''; };
+$('#title').oninput = $('#ep').oninput = updateNameEx;
 $('#btnClear').onclick = () => { if (pages.length && confirm('全部消します。よろしいですか？')) { pages = []; cur = -1; sel = -1; undoStack.length = 0; renderAll(); } };
 $('#btnExport').onclick = exportAll;
 
@@ -2166,7 +2234,7 @@ $('#btnLinkAll').onclick = () => {
 };
 
 $('#zoom').oninput = e => { zoom = +e.target.value / 100; $('#zoomV').textContent = e.target.value + '%'; renderStage(); renderShapes(); };
-$('#fmt').onchange = e => { $('#rowQ').style.display = e.target.value === 'jpg' ? 'flex' : 'none'; };
+$('#fmt').onchange = e => { $('#rowQ').style.display = e.target.value === 'jpg' ? 'flex' : 'none'; updateNameEx(); };
 $('#quality').oninput = e => $('#vQ').textContent = e.target.value;
 $('#fill').onchange = () => renderPanelList();
 $('#cutPos').onchange = () => { renderShapes(); renderPanelList(); };
@@ -2216,11 +2284,14 @@ window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; $('#dropBig').classList.remove('on'); } });
 window.addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; $('#dropBig').classList.remove('on');
-  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  const fs = [...e.dataTransfer.files];
+  const js = fs.find(f => /\.json$/i.test(f.name));
+  (async () => { if (js) await loadWork(js); const imgs = fs.filter(f => !/\.json$/i.test(f.name)); if (imgs.length) addFiles(imgs); })();
 });
 window.addEventListener('resize', () => { renderStage(); renderShapes(); });
 window.addEventListener('beforeunload', e => { if (pages.length) { e.preventDefault(); e.returnValue = ''; } });
 
+updateNameEx();
 renderAll();
 </script>
 </body>
