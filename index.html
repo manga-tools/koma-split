@@ -136,6 +136,9 @@
   <span class="sp"></span>
   <button id="btnAdd">原稿を追加</button>
   <button id="btnDetectAll">全ページ自動検出</button>
+  <button id="btnSaveWork" title="枠・塗り・設定をまとめた作業ファイル（.json）を保存する。ブラウザを閉じても、あとで続きから">作業を保存</button>
+  <button id="btnLoadWork" title="保存した作業ファイルを読み込む。原稿は、読み込みの前でも後でも、同じファイルを落とせば続きから">作業を読み込み</button>
+  <input type="file" id="workFile" accept=".json,application/json" hidden>
   <button id="btnExport" class="primary">まとめて書き出し（ZIP）</button>
   <button id="btnClear" class="warn">全消去</button>
   <input type="file" id="file" accept=".psd,.psb,.tif,.tiff,image/*" multiple hidden>
@@ -260,6 +263,9 @@
       <div class="row"><span>形式</span>
         <select id="fmt" style="flex:1"><option value="jpg" selected>JPEG</option><option value="png">PNG（劣化なし）</option></select>
       </div>
+      <div class="row" title="書き出す画像の大きさ（原寸に対する割合）"><span>出力サイズ</span>
+        <select id="outScale" style="flex:1"><option value="25">25%</option><option value="50" selected>50%</option><option value="75">75%</option><option value="100">100%（原寸）</option></select>
+      </div>
       <div class="row" id="rowQ"><span>画質</span><input type="range" id="quality" min="50" max="100" value="92"><span class="v" id="vQ">92</span></div>
       <div class="row" title="コマの枠線のどこで切り抜くか"><span>切る位置</span>
         <select id="cutPos" style="flex:1"><option value="in" selected>枠線の内側（線を含めない）</option><option value="mid">枠線の中央</option><option value="out">枠線の外側（線を含める）</option></select>
@@ -270,8 +276,6 @@
       <div class="row" title="ファイル名は 作品名_話数_連番（全ページ通し）。原稿を落とすと、元のファイル名から自動で入ります"><span>作品名</span><input type="text" id="title" placeholder="例 morahara" style="flex:1;min-width:0"></div>
       <div class="row"><span>話数</span><input type="text" id="ep" placeholder="例 001" style="flex:1;min-width:0"></div>
       <div class="row" style="color:var(--muted);font-size:11px" id="nameEx"></div>
-      <div class="row" style="gap:6px"><button id="btnSaveWork" class="mini" title="枠・塗り・設定をまとめた作業ファイル（.json）を保存する">作業を保存</button><button id="btnLoadWork" class="mini" title="保存した作業ファイルを読み込む。原稿は、読み込みの前でも後でも、同じファイルを落とせば続きから">作業を読み込み</button>
-        <input type="file" id="workFile" accept=".json,application/json" hidden></div>
     </div>
   </div>
 </div>
@@ -1021,7 +1025,7 @@ function guessNames(base){
 
 /* ---- 作業ファイル（.json）：枠・塗り・設定。原稿そのものは入れない（ファイル名で照らし合わせる） ---- */
 let pendingWork = null;                                  // 読み込んだが、まだ原稿が来ていないページ（名前→shapes）
-const SETTING_IDS = ['sWhite','sGap','sTol','sMin','sGrow','obl','lines','rtl','fmt','quality','cutPos','fill','title','ep','rimW','rimBrushSize','eraseSize','whiteW'];
+const SETTING_IDS = ['outScale','sWhite','sGap','sTol','sMin','sGrow','obl','lines','rtl','fmt','quality','cutPos','fill','title','ep','rimW','rimBrushSize','eraseSize','whiteW'];
 const cleanShape = s => {
   const o = {};
   for (const k of ['poly','link','gut','seeds','rects','erase','rims','rimStrokes','whitePen']) if (s[k] !== undefined && s[k] !== false && !(Array.isArray(s[k]) && !s[k].length)) o[k] = s[k];
@@ -2022,6 +2026,21 @@ function undo(){
 ============================================================ */
 function ext(){ return $('#fmt').value === 'jpg' ? 'jpg' : 'png'; }
 
+/* 出力サイズ（25/50/75/100%）に縮めて、JPEG か PNG にする。切り抜き・塗りは原寸で行い、最後に縮める */
+async function encodeCanvas(c){
+  const k = +$('#outScale').value / 100;
+  let out = c;
+  if (k < 1) {
+    out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(c.width * k)); out.height = Math.max(1, Math.round(c.height * k));
+    const g = out.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(c, 0, 0, out.width, out.height);
+  }
+  const blob = await new Promise(res => out.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', +$('#quality').value / 100));
+  if (out !== c) out.width = out.height = 0;
+  return blob;
+}
+
 async function cropBlob(full, p, s, o, dark){
   // 枠線の位置は原寸で測り直す（プレビューでは線が1〜2pxしかないため）
   const poly0 = s.poly.map(q => [q[0]*p.W, q[1]*p.H]);
@@ -2046,8 +2065,7 @@ async function cropBlob(full, p, s, o, dark){
     g.drawImage(E, m, m, w, h, 0, 0, w, h);
     E.width = E.height = 0;
   } else g.drawImage(full, x, y, w, h, 0, 0, w, h);
-  const q = +$('#quality').value / 100;
-  const blob = await new Promise(res => c.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', q));
+  const blob = await encodeCanvas(c);
   c.width = c.height = 0;
   return blob;
 }
@@ -2070,8 +2088,7 @@ async function cropGroupBlob(full, p, idx, o, dark){
   const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.W, p.H)).map(q => [q[0]-x, q[1]-y]);
   paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), rr, fill, true, seeds);
   applyManual(g, x, y, full, man, fill, orig, rr);
-  const q = +$('#quality').value / 100;
-  const blob = await new Promise(res => c.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', q));
+  const blob = await encodeCanvas(c);
   c.width = c.height = 0;
   return blob;
 }
