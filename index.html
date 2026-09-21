@@ -99,6 +99,7 @@
   #ov.prect{cursor:crosshair}
   .erasemark{fill:#fff;stroke:none;pointer-events:none}
   .rimmark{fill:rgba(76,141,255,.35);stroke:none;pointer-events:none}
+  .rimundomark{fill:rgba(0,0,0,.55);stroke:none;pointer-events:none}
   .paintband{fill:rgba(0,0,0,.55);stroke:var(--accent);stroke-dasharray:6 4}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
   .cutline{stroke:#ff4d8d;stroke-linecap:round}
@@ -165,7 +166,8 @@
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
         <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、そのまわりの<b>塗った黒だけ</b>を輪郭に沿って細く削り、白いフチにする（黒く塗ったまわりで輪郭が分からなくなるとき）。枠線や絵の黒は削らない。黒いフキダシは黒い所をクリック。赤い点＝形が見つからなかった</span></div>
-        <div><span class="k">「白フチブラシ」</span><span>白く抜きたい所をなぞる。消えるのは、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけ（選択範囲の反転→拡張→反転と同じ）。何度なぞっても、それより奥の黒は消えない。大きさは消しゴムと共通</span></div>
+        <div><span class="k">「白フチブラシ」</span><span>白く抜きたい所をなぞる。消えるのは、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけ（選択範囲の反転→拡張→反転と同じ）。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」</span></div>
+        <div><span class="k">「白フチ消し」</span><span>なぞった所の白フチを消して、塗った黒に戻す（白フチブラシ中に <kbd>option</kbd>＋なぞっても同じ）。クリックで付けた白フチも消える</span></div>
         <div><span class="k">「はみ出しに白フチ」</span><span>選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど。中が白でもトーンでもよい）に、まとめて白フチを付ける。いらないものは白フチの道具で option＋クリック</span></div>
         <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
@@ -207,7 +209,9 @@
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
       <span class="tgroup">
         <button id="btnRim" class="mini" title="フキダシや花びらの中をクリックすると、まわりの塗った黒だけを輪郭に沿って細く削って、白いフチにする（黒いフキダシは黒い所をクリック。option＋クリックで取り消し）">白フチ</button>
-        <button id="btnRimBrush" class="mini" title="なぞった所で、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけを削る。何度なぞっても、それより奥の黒は消えない。大きさは消しゴムと共通">白フチブラシ</button>
+        <button id="btnRimBrush" class="mini" title="なぞった所で、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけを削る。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」">白フチブラシ</button>
+        <button id="btnRimUndo" class="mini" title="なぞった所の白フチを消して、塗った黒に戻す（白フチブラシ中に option＋なぞっても同じ）">白フチ消し</button>
+        <span class="tlabel">ブラシ</span><input type="range" id="rimBrushSize" min="3" max="60" value="14" style="width:56px" title="白フチブラシ・白フチ消しの大きさ">
         <button id="btnAutoRim" class="mini" title="選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど）に、まとめて白フチを付ける">はみ出しに白フチ</button>
         <span class="tlabel">太さ</span><input type="range" id="rimW" min="1" max="12" value="3" style="width:56px" title="白フチの太さ（プレビューのpx。書き出しでは原寸に合わせて太くなる）"><span class="tval" id="vRimW">3</span>
       </span>
@@ -794,14 +798,16 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
         paintedM[y*ww + x] = pnt ? 1 : 0; free[y*ww + x] = pnt ? 0 : 1;
       }
       const near = dilateMask(free, ww, hh, man.rimW);    // 塗っていない所を「太さ」ぶん広げた所
-      for (const [sx, sy, rr] of man.rimStrokes) {
+      // なぞった順に：削る（帯の中を元の絵に）／戻す（白フチ消し：塗った黒に戻す。クリックの白フチも消える）
+      for (const [sx, sy, rr, carve] of man.rimStrokes) {
         const cx = sx - ox - wx0, cy = sy - oy - wy0, r2 = rr*rr;
         for (let y = Math.max(0, Math.floor(cy - rr)); y <= Math.min(hh - 1, Math.ceil(cy + rr)); y++)
           for (let x = Math.max(0, Math.floor(cx - rr)); x <= Math.min(ww - 1, Math.ceil(cx + rr)); x++) {
             const li = y*ww + x;
-            if ((x - cx)*(x - cx) + (y - cy)*(y - cy) > r2 || !paintedM[li] || !near[li]) continue;
+            if ((x - cx)*(x - cx) + (y - cy)*(y - cy) > r2 || !paintedM[li]) continue;
             const q = ((y + wy0)*cw + x + wx0) * 4;
-            d[q] = od[q]; d[q+1] = od[q+1]; d[q+2] = od[q+2]; d[q+3] = od[q+3];
+            if (carve) { if (!near[li]) continue; d[q] = od[q]; d[q+1] = od[q+1]; d[q+2] = od[q+2]; d[q+3] = od[q+3]; }
+            else { d[q] = b0[q]; d[q+1] = b0[q+1]; d[q+2] = b0[q+2]; d[q+3] = b0[q+3]; }
           }
       }
       g.putImageData(img, 0, 0);
@@ -875,7 +881,7 @@ const manualPx = (list, W, H, p) => ({
   blockPad: Math.max(2, Math.round(6 * W / p.pv.width)),
   pageW: W, pageH: H,
   erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W])),
-  rimStrokes: list.flatMap(s => (s.rimStrokes || []).map(e => [e[0]*W, e[1]*H, e[2]*W])),
+  rimStrokes: list.flatMap(s => (s.rimStrokes || []).map(e => [e[0]*W, e[1]*H, e[2]*W, e[3] === 0 ? 0 : 1])),
 
 });
 
@@ -1696,14 +1702,16 @@ ov.addEventListener('pointerdown', e => {
     return sel >= 0 && inShape(p.shapes[sel]) ? sel : p.shapes.findIndex(inShape);
   };
   const onHandle = t.classList.contains('hv') || t.classList.contains('he');
-  if (!onHandle && (tool === 'erase' || tool === 'prect' || tool === 'rimbrush')) {
+  if (!onHandle && (tool === 'erase' || tool === 'prect' || tool === 'rimbrush' || tool === 'rimundo')) {
     const i = hitShape(); if (i < 0) return;
     snap(); sel = i;
     const a = toSvg(n, p);
-    if (tool === 'erase' || tool === 'rimbrush') {
-      const r = +$('#eraseSize').value * k;              // 画面上のpx → プレビューのpx
-      const cls = tool === 'erase' ? 'erasemark' : 'rimmark';
-      drag = { mode: tool, i, r: r / p.pv.width, pts: [[n[0], n[1]]], cls };
+    if (tool === 'erase' || tool === 'rimbrush' || tool === 'rimundo') {
+      const isRim = tool !== 'erase';
+      const r = +$(isRim ? '#rimBrushSize' : '#eraseSize').value * k;   // 画面上のpx → プレビューのpx
+      const undoRim = tool === 'rimundo' || (tool === 'rimbrush' && e.altKey);
+      const cls = !isRim ? 'erasemark' : undoRim ? 'rimundomark' : 'rimmark';
+      drag = { mode: isRim ? 'rimbrush' : 'erase', i, r: r / p.pv.width, pts: [[n[0], n[1]]], cls, carve: undoRim ? 0 : 1 };
       addEl('circle', { class:cls, cx:a[0], cy:a[1], r });
     } else {
       drag = { mode:'prect', i, n0:n, el: addEl('rect', {class:'paintband', x:a[0], y:a[1], width:0, height:0, 'stroke-width':2*k}) };
@@ -1814,8 +1822,9 @@ ov.addEventListener('pointerup', () => {
   const p = pages[cur];
 
   if (drag.mode === 'erase' || drag.mode === 'rimbrush') {
-    const s = p.shapes[drag.i], key = drag.mode === 'erase' ? 'erase' : 'rimStrokes';
-    s[key] = (s[key] || []).concat(drag.pts.map(q => [q[0], q[1], drag.r]));
+    const s = p.shapes[drag.i];
+    if (drag.mode === 'erase') s.erase = (s.erase || []).concat(drag.pts.map(q => [q[0], q[1], drag.r]));
+    else s.rimStrokes = (s.rimStrokes || []).concat(drag.pts.map(q => [q[0], q[1], drag.r, drag.carve]));
   } else if (drag.mode === 'prect') {
     drag.el.remove();
     const r = drag.cur, s = p.shapes[drag.i];
@@ -2060,10 +2069,10 @@ $('#btnExport').onclick = exportAll;
 /* 道具の切り替え。同じボタンをもう一度押すか Esc で、ふつうの操作（選ぶ・動かす）に戻る */
 function setTool(t){
   tool = (t === null || tool === t) ? null : t;
-  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRim','rim'],['btnRimBrush','rimbrush']])
+  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRim','rim'],['btnRimBrush','rimbrush'],['btnRimUndo','rimundo']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
-  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える）' }[tool];
+  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える。option＋なぞると戻す）', rimundo:'白フチ消し：なぞった所の白フチを消して黒に戻す' }[tool];
   $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
   $('#toolHint').style.display = label ? 'block' : 'none';
 }
@@ -2073,6 +2082,7 @@ $('#btnErase').onclick = () => setTool('erase');
 $('#btnPaintRect').onclick = () => setTool('prect');
 $('#btnRim').onclick = () => setTool('rim');
 $('#btnRimBrush').onclick = () => setTool('rimbrush');
+$('#btnRimUndo').onclick = () => setTool('rimundo');
 $('#btnAutoRim').onclick = () => {
   const p = pages[cur];
   if (!p || sel < 0) { alert('先に、白フチを付けたいコマを選んでください'); return; }
