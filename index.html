@@ -156,7 +156,8 @@
         <div><span class="k">辺をダブルクリック</span><span>角を1つ増やす</span></div>
         <div><span class="k"><kbd>option</kbd>＋○</span><span>その角を消す</span></div>
         <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
-        <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）と、ほかのコマと重なっている所を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
+        <div><span class="k">コマの重なり</span><span>番号の若いコマが優先。あとのコマは、先のコマと重なっている所が「コマ外の塗り」で塗られる（編集画面では先のコマの絵を隠さない）</span></div>
+        <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
         <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、まわりに白いフチを付ける（黒く塗ったまわりで輪郭が分からなくなるとき）。黒いフキダシもOK。赤い点＝形が見つからなかった</span></div>
@@ -537,7 +538,8 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
   g.fillStyle = protect.length ? '#fff' : '#000'; g.fillRect(0, 0, E.width, E.height);
   g.drawImage(src, x - m, y - m, E.width, E.height, 0, 0, E.width, E.height);
   const orig = man && man.rims.length ? g.getImageData(0, 0, E.width, E.height) : null;
-  paintGutters(g, E.width, E.height, protect.map(P => P.map(q => [q[0] - x + m, q[1] - y + m])), r, fill, !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
+  if (edges || seeds.length)
+    paintGutters(g, E.width, E.height, protect.map(P => P.map(q => [q[0] - x + m, q[1] - y + m])), r, fill, !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
   E.rimFailed = applyManual(g, x - m, y - m, src, man, fill, orig, r);
   return E;
 }
@@ -628,9 +630,30 @@ const protectPx = (p, s, W, H) => s.gut ? subPanels(p, s).map(P => P.map(q => [q
 
 const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length) || (s.rims && s.rims.length);
 const seedsPx = (s, W, H) => (s.seeds || []).map(q => [q[0]*W, q[1]*H]);
-/* overlap：ほかのコマと重なっている所も塗る（「枠外」のコマと、つないだコマ） */
-const manualPx = (list, W, H, p, overlap) => ({
-  polys: overlap ? p.shapes.filter(o => !list.includes(o)).map(o => o.poly.map(q => [q[0]*W, q[1]*H])) : [],
+/* 番号の若いコマが優先。あとのコマは、先のコマと重なっている所を塗る（同じ絵が2回出ることはないので）。
+   境目で数pxだけ重なるのはよくある（幅はページいっぱいでも厚みは3pxほど）ので、
+   重なりの「厚み」（面積÷長い辺）がプレビューで10px（原寸で約40px）未満なら無視する */
+function overlaps(A, B, W, H){
+  const a = polyBBox(A), b = polyBBox(B);
+  const x1 = Math.max(a.x1, b.x1), x2 = Math.min(a.x2, b.x2), y1 = Math.max(a.y1, b.y1), y2 = Math.min(a.y2, b.y2);
+  const bw = (x2 - x1) * W, bh = (y2 - y1) * H;
+  if (bw < 10 || bh < 10) return false;
+  let hit = 0; const n = 32;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = x1 + (x2-x1)*(i+0.5)/n, y = y1 + (y2-y1)*(j+0.5)/n;
+    if (pointInPoly(x, y, A) && pointInPoly(x, y, B)) hit++;
+  }
+  return hit / (n*n) * bw * bh / Math.max(bw, bh) >= 10;
+}
+/* list（1コマか、つないだコマ）より前の番号で、list と重なっているコマ */
+function earlierOverlaps(p, list){
+  const first = Math.min(...list.map(s => p.shapes.indexOf(s)));
+  return p.shapes.slice(0, first).filter(o => list.some(s => overlaps(s.poly, o.poly, p.pv.width, p.pv.height)));
+}
+const needsPaint = (p, s) => painted(s) || earlierOverlaps(p, [s]).length > 0;
+
+const manualPx = (list, W, H, p) => ({
+  polys: earlierOverlaps(p, list).map(o => o.poly.map(q => [q[0]*W, q[1]*H])),
   rects: list.flatMap(s => (s.rects || []).map(r => [r[0]*W, r[1]*H, r[2]*W, r[3]*H])),
   rims:  list.flatMap(s => (s.rims || []).map(q => [q[0]*W, q[1]*H])),
   rimW:  Math.max(1, Math.round(+$('#rimW').value * W / p.pv.width)),
@@ -642,7 +665,7 @@ function paintedPreview(p, s){
   const poly = shapeCutPx(p, s), bb = polyBBox(poly), fill = $('#fill').value;
   const x = Math.round(bb.x1), y = Math.round(bb.y1), w = Math.max(1, Math.round(bb.w)), h = Math.max(1, Math.round(bb.h));
   const prot = protectPx(p, s, p.pv.width, p.pv.height);
-  const man = manualPx([s], p.pv.width, p.pv.height, p, !!s.gut);
+  const man = manualPx([s], p.pv.width, p.pv.height, p);
   const key = JSON.stringify([poly, s.seeds || [], !!s.gut, fill, prot, man]);
   if (!s._gut || s._gut.key !== key) {
     const img = gutterPainted(p.pv, x, y, w, h, 8, 1, fill, !!s.gut, seedsPx(s, p.pv.width, p.pv.height), man, prot);
@@ -1211,11 +1234,19 @@ function renderShapes(){
   const W = p.pv.width, H = p.pv.height, k = uscale();
   let h = '';
   const pts = P => P.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
-  // 枠外を塗る・バケツで塗ったコマは、塗った結果をそのまま重ねて見せる
-  p.shapes.forEach(s => {
-    if (!painted(s)) return;
-    const pp = paintedPreview(p, s);
-    h += `<image href="${pp.url}" x="${pp.x}" y="${pp.y}" width="${pp.w}" height="${pp.h}" pointer-events="none"/>`;
+  // 塗ったコマは、塗った結果をそのまま重ねて見せる。
+  // ただし先の番号のコマの上にはかぶせない（先のコマの絵が隠れて作業しにくいので。書き出しでは黒くなる）
+  p.shapes.forEach((s, i) => {
+    if (!needsPaint(p, s)) return;
+    const pp = paintedPreview(p, s), ea = earlierOverlaps(p, [s]);
+    let mask = '';
+    if (ea.length) {
+      h += `<mask id="pm${i}" maskUnits="userSpaceOnUse" x="${pp.x}" y="${pp.y}" width="${pp.w}" height="${pp.h}">` +
+           `<rect x="${pp.x}" y="${pp.y}" width="${pp.w}" height="${pp.h}" fill="#fff"/>` +
+           ea.map(o => `<polygon points="${pts(toPx(o.poly, p))}" fill="#000"/>`).join('') + `</mask>`;
+      mask = ` mask="url(#pm${i})"`;
+    }
+    h += `<image href="${pp.url}" x="${pp.x}" y="${pp.y}" width="${pp.w}" height="${pp.h}" pointer-events="none"${mask}/>`;
   });
   p.shapes.forEach((s, i) => {
     h += `<polygon class="mk${i===sel?' on':''}" data-i="${i}" points="${pts(toPx(s.poly, p))}" stroke-width="${(2*k).toFixed(2)}"/>`;
@@ -1285,7 +1316,7 @@ function panelCanvas(p, s, maxW, maxH){
     poly.forEach((q, j) => { const x = (q[0]-bb.x1)*f, y = (q[1]-bb.y1)*f; j ? g.lineTo(x,y) : g.moveTo(x,y); });
     g.closePath(); g.clip();
   }
-  if (painted(s)) {
+  if (needsPaint(p, s)) {
     const pp = paintedPreview(p, s);
     g.drawImage(pp.img, 8, 8, pp.w, pp.h, 0, 0, c.width, c.height);
   } else g.drawImage(p.pv, bb.x1, bb.y1, sw, sh, 0, 0, c.width, c.height);
@@ -1295,7 +1326,7 @@ function panelCanvas(p, s, maxW, maxH){
 /* つないだコマの見本（プレビューの解像度で塗ってから縮める） */
 function groupCanvas(p, idx, maxW, maxH){
   const polys = idx.map(i => shapeCutPx(p, p.shapes[i]));
-  const man = manualPx(idx.map(i => p.shapes[i]), p.pv.width, p.pv.height, p, true);
+  const man = manualPx(idx.map(i => p.shapes[i]), p.pv.width, p.pv.height, p);
   const key = JSON.stringify([polys, idx.map(i => p.shapes[i].seeds || []), man]) + $('#fill').value;
   p._gc = p._gc || {};
   let src = p._gc[key];
@@ -1659,9 +1690,9 @@ async function cropBlob(full, p, s, o, dark){
     poly.forEach((q, j) => { const px = q[0]-x, py = q[1]-y; j ? g.lineTo(px, py) : g.moveTo(px, py); });
     g.closePath(); g.clip();
   }
-  if (painted(s)) {
+  if (needsPaint(p, s)) {
     const unit = p.W / p.pv.width, m = Math.round(8 * unit);
-    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H), manualPx([s], p.W, p.H, p, !!s.gut), protectPx(p, s, p.W, p.H));
+    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H), manualPx([s], p.W, p.H, p), protectPx(p, s, p.W, p.H));
     g.drawImage(E, m, m, w, h, 0, 0, w, h);
     E.width = E.height = 0;
   } else g.drawImage(full, x, y, w, h, 0, 0, w, h);
@@ -1684,7 +1715,7 @@ async function cropGroupBlob(full, p, idx, o, dark){
   if (fill === 'none' && ext() === 'jpg') fill = '#ffffff';
   g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
   g.drawImage(full, x, y, w, h, 0, 0, w, h);
-  const man = manualPx(idx.map(i => p.shapes[i]), p.W, p.H, p, true), rr = Math.max(1, Math.round(1.2 * unit));
+  const man = manualPx(idx.map(i => p.shapes[i]), p.W, p.H, p), rr = Math.max(1, Math.round(1.2 * unit));
   const orig = man.rims.length ? g.getImageData(0, 0, w, h) : null;
   const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.W, p.H)).map(q => [q[0]-x, q[1]-y]);
   paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), rr, fill, true, seeds);
