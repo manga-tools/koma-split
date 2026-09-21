@@ -105,7 +105,8 @@
   .paintband{fill:rgba(0,0,0,.55);stroke:var(--accent);stroke-dasharray:6 4}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
   .cutline{stroke:#ff4d8d;stroke-linecap:round}
-  .blank{color:var(--muted);text-align:center;padding:60px 20px;font-size:13px;line-height:2}
+  .blank{color:var(--muted);text-align:center;padding:20px;font-size:13px;line-height:2;flex:1;align-self:stretch;
+         flex-direction:column;justify-content:center;align-items:center}
 
   .pitem{display:flex;gap:7px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px;margin-bottom:6px;cursor:pointer}
   .pitem.on{border-color:var(--accent)}
@@ -117,6 +118,11 @@
   .pitem .no{line-height:1.1}
 
   .set{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px;display:flex;flex-direction:column;gap:6px}
+  details.set:not([open]){gap:0}
+  details.set > summary{list-style:none;display:flex;align-items:center;gap:6px;user-select:none}
+  details.set > summary::-webkit-details-marker{display:none}
+  details.set > summary::before{content:'▶';font-size:9px;color:var(--muted);transition:transform .15s}
+  details.set[open] > summary::before{transform:rotate(90deg)}
   .set .row{display:flex;align-items:center;gap:6px}
   .set .row > span:first-child{color:var(--muted);flex:0 0 96px}
   .set input[type=range]{flex:1;min-width:0}
@@ -169,7 +175,7 @@
         <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
         <div><span class="k">コマの重なり</span><span>番号の若いコマが優先。あとのコマは、先のコマと重なっている所が「コマ外の塗り」で塗られる（編集画面では先のコマの絵を隠さない）</span></div>
         <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
-        <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
+        <div><span class="k">「黒バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
         <div><span class="k">「白フチブラシ」</span><span>白く抜きたい所をなぞる。消えるのは、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけ（選択範囲の反転→拡張→反転と同じ）。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」</span></div>
         <div><span class="k">「白フチ消し」</span><span>なぞった所の白フチを消して、塗った黒に戻す（白フチブラシ中に <kbd>option</kbd>＋なぞっても同じ）。クリックで付けた白フチも消える</span></div>
@@ -210,7 +216,7 @@
       <span class="sp"></span>
       <label class="ck" title="角を動かすとき、辺が水平・垂直や、ほかのコマの辺と同じ角度になる所に吸い付く"><input type="checkbox" id="snapHV" checked> 水平・垂直にスナップ</label>
       <button id="btnSplit" class="mini">線で割る</button>
-      <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
+      <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">黒バケツ</button>
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
       <span class="tgroup">
         <button id="btnRimBrush" class="mini" title="なぞった所で、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけを削る。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」">白フチブラシ</button>
@@ -236,14 +242,14 @@
     <div id="editBody">
       <div id="toolHint"></div>
       <div id="stage" style="display:none"><canvas id="cv"></canvas><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
-      <div class="blank" id="blank" style="cursor:pointer">ここに原稿をドロップ（どこに落としてもOK）<br><span style="font-size:12px;color:var(--muted)">クリックでも選べます。PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
+      <div class="blank" id="blank" style="cursor:pointer;display:flex"><div>ここに原稿をドロップ（どこに落としてもOK）</div><span style="font-size:12px;color:var(--muted)">クリックでも選べます。PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
       <div id="dropBig">ここに落とす</div>
     </div>
   </div>
 
   <div class="col" id="colPanels">
-    <div class="set">
-      <div style="color:var(--fg);font-weight:600">自動検出の設定</div>
+    <details class="set" id="detSet" open>
+      <summary style="color:var(--fg);font-weight:600;cursor:pointer">自動検出の設定</summary>
       <div class="row"><span>白とみなす明るさ</span><input type="range" id="sWhite" min="150" max="254" value="238"><span class="v" id="vWhite">238</span></div>
       <div class="row"><span>溝の最小幅</span><input type="range" id="sGap" min="2" max="30" value="6"><span class="v" id="vGap">0.6%</span></div>
       <div class="row" title="フキダシや人物が溝をまたいでいても溝とみなす割合"><span>はみ出し許容</span><input type="range" id="sTol" min="0" max="70" value="40"><span class="v" id="vTol">40%</span></div>
@@ -254,7 +260,7 @@
         <label class="ck" title="白い溝が無く、枠線1本で区切られた段も切る"><input type="checkbox" id="lines" checked> 枠線1本でも切る</label>
       </div>
       <div class="row" style="gap:10px"><label class="ck"><input type="checkbox" id="rtl" checked> 右→左</label><button id="btnReorder" class="mini">番号を振り直す</button></div>
-    </div>
+    </details>
     <div class="colhead"><strong>このページのコマ</strong><span id="shapeCnt">0</span>
       <button id="btnLinkAll" class="mini" title="このページのコマを全部つなげて、1枚で書き出す（コマの外の白は塗る）">全部つなげる</button><span class="sp"></span>
       <span>大きさ</span><input type="range" id="thumbSize" min="60" max="360" value="110" style="width:80px"></div>
@@ -1540,7 +1546,7 @@ function renderThumbs(){
 function renderStage(){
   const p = pages[cur];
   $('#stage').style.display = p ? 'block' : 'none';
-  $('#blank').style.display = p ? 'none' : 'block';
+  $('#blank').style.display = p ? 'none' : 'flex';
   $('#curName').textContent = p ? p.name : '—';
   $('#curSize').textContent = p ? `${p.W} × ${p.H} px` : '';
   if (!p) return;
@@ -2212,7 +2218,7 @@ function setTool(t){
   for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRimBrush','rimbrush'],['btnRimUndo','rimundo'],['btnWhitePen','wpen']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
-  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える。option＋なぞると戻す）', rimundo:'白フチ消し：なぞった所の白フチを消して黒に戻す', wpen:'白ペン：なぞった所を白で塗る' }[tool];
+  const label = { split:'線で割る', bucket:'黒バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える。option＋なぞると戻す）', rimundo:'白フチ消し：なぞった所の白フチを消して黒に戻す', wpen:'白ペン：なぞった所を白で塗る' }[tool];
   $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
   $('#toolHint').style.display = label ? 'block' : 'none';
 }
@@ -2315,6 +2321,8 @@ window.addEventListener('drop', e => {
 window.addEventListener('resize', () => { renderStage(); renderShapes(); });
 window.addEventListener('beforeunload', e => { if (pages.length) { e.preventDefault(); e.returnValue = ''; } });
 
+try { if (localStorage.getItem('koma.detSet') === 'closed') $('#detSet').open = false; } catch {}
+$('#detSet').addEventListener('toggle', () => { try { localStorage.setItem('koma.detSet', $('#detSet').open ? 'open' : 'closed'); } catch {} });
 updateNameEx();
 renderAll();
 </script>
