@@ -68,8 +68,9 @@
   .thumb .x{position:absolute;top:5px;left:5px;background:#ff5c5c;color:#fff;font-size:10px;line-height:15px;padding:0 5px;border-radius:3px;display:none}
   .thumb:hover .x{display:block}
 
-  #editBody{flex:1;overflow:auto;padding:14px;position:relative;display:flex;justify-content:center;align-items:flex-start}
-  #stage{position:relative;line-height:0;background:#fff;box-shadow:0 3px 18px rgba(0,0,0,.5);flex:0 0 auto}
+  #editBody{flex:1;overflow:auto;padding:14px;position:relative;display:flex;align-items:flex-start}
+  /* 中央寄せは margin:auto で（justify-content:center だと、拡大したとき左側がスクロールで戻れなくなる） */
+  #stage{position:relative;line-height:0;background:#fff;box-shadow:0 3px 18px rgba(0,0,0,.5);flex:0 0 auto;margin:0 auto}
   #stage canvas{display:block;width:100%;height:auto}
   #ov{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;overflow:visible}
   #ov.split{cursor:cell}
@@ -87,6 +88,10 @@
   .cutprev{fill:none;stroke:#ff4d8d;stroke-dasharray:5 4;pointer-events:none}
   .seed{fill:#ffb020;stroke:#000}
   #ov.bucket{cursor:copy}
+  #ov.erase{cursor:cell}
+  #ov.prect{cursor:crosshair}
+  .erasemark{fill:rgba(255,255,255,.55);stroke:none;pointer-events:none}
+  .paintband{fill:rgba(0,0,0,.55);stroke:var(--accent);stroke-dasharray:6 4}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
   .cutline{stroke:#ff4d8d;stroke-linecap:round}
   .blank{color:var(--muted);text-align:center;padding:60px 20px;font-size:13px;line-height:2}
@@ -149,6 +154,8 @@
         <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
         <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）だけを塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
+        <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
+        <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
         <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
         <div><span class="k"><kbd>⌘Z</kbd></span><span>元に戻す</span></div>
@@ -185,6 +192,9 @@
       <label class="ck" title="角を動かすとき、辺が水平・垂直や、ほかのコマの辺と同じ角度になる所に吸い付く"><input type="checkbox" id="snapHV" checked> 水平・垂直にスナップ</label>
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
+      <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
+      <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
+      <input type="range" id="eraseSize" min="4" max="60" value="14" style="width:60px" title="消しゴムの大きさ">
       <button id="btnRect" class="mini">四角にする</button>
       <button id="btnDetect" class="mini">このページを再検出</button>
       <button id="btnClearShapes" class="mini warn">コマを全部消す</button>
@@ -248,7 +258,7 @@ const SVGNS = 'http://www.w3.org/2000/svg';
    pages[i] = {name, base, file, W,H(原寸), pv(プレビューcanvas), shapes:[{poly:[[x,y]…] 0..1}]}
    コマは四角とはかぎらないので、すべて多角形で持つ（四角も4点の多角形）
 ============================================================ */
-let pages = [], cur = -1, sel = -1, zoom = 1, splitMode = false, bucketMode = false;
+let pages = [], cur = -1, sel = -1, zoom = 1, tool = null;   // tool: split / bucket / erase / prect
 const undoStack = [];
 
 /* ============================================================
@@ -492,7 +502,7 @@ function paintGutters(g, w, h, polys, r, fill, edges = true, seeds = []){
 
   const img = g.getImageData(0, 0, w, h), d = img.data;
   const darkM = new Uint8Array(N);
-  for (let i = 0, p = 0; i < N; i++, p += 4) darkM[i] = (d[p]*299 + d[p+1]*587 + d[p+2]*114) / 1000 < 200 ? 1 : 0;
+  for (let i = 0, p = 0; i < N; i++, p += 4) darkM[i] = (d[p]*299 + d[p+1]*587 + d[p+2]*114) / 1000 < 230 ? 1 : 0;   // 薄い輪郭（花びらなど）も壁にする
   const wall = dilateMask(darkM, w, h, r);
   const pass = new Uint8Array(N);
   for (let i = 0; i < N; i++) pass[i] = !inside[i] && !wall[i] ? 1 : 0;
@@ -507,24 +517,47 @@ function paintGutters(g, w, h, polys, r, fill, edges = true, seeds = []){
 /* 「枠外を塗る」コマ用：src の (x,y,w,h) を、まわりに m だけ余裕を持たせて描き、
    その外周からたどれる白を塗った画像を返す（返り値の (m,m) が切り抜く範囲の左上）。
    たどり始めを外側にするのは、切り抜く位置が枠線のすぐ内側でも、絵の中へ漏れないようにするため */
-function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds){
+function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man){
   const E = document.createElement('canvas'); E.width = w + 2*m; E.height = h + 2*m;
   const g = E.getContext('2d');
   g.fillStyle = '#fff'; g.fillRect(0, 0, E.width, E.height);
   g.drawImage(src, x - m, y - m, E.width, E.height, 0, 0, E.width, E.height);
-  paintGutters(g, E.width, E.height, [], r, fill, edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
+  paintGutters(g, E.width, E.height, [], r, fill, edges && !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
+  applyManual(g, x - m, y - m, src, man, fill);
   return E;
 }
-const painted = s => s.gut || (s.seeds && s.seeds.length);
+/* 手で足した塗り：四角で塗る（rects）→ 最後に消しゴム（erase）で元の絵に戻す。座標はページのpx。
+   g のキャンバスの (0,0) が、ページの (ox,oy) */
+function applyManual(g, ox, oy, src, man, fill){
+  if (!man) return;
+  const cw = g.canvas.width, ch = g.canvas.height;
+  for (const [x1, y1, x2, y2] of man.rects) {
+    if (fill === 'none') g.clearRect(x1-ox, y1-oy, x2-x1, y2-y1);
+    else { g.fillStyle = fill; g.fillRect(x1-ox, y1-oy, x2-x1, y2-y1); }
+  }
+  if (man.erase.length) {
+    g.save(); g.beginPath();
+    for (const [x, y, r] of man.erase) { g.moveTo(x-ox+r, y-oy); g.arc(x-ox, y-oy, r, 0, Math.PI*2); }
+    g.clip();
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
+    g.drawImage(src, ox, oy, cw, ch, 0, 0, cw, ch);
+    g.restore();
+  }
+}
+const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length);
 const seedsPx = (s, W, H) => (s.seeds || []).map(q => [q[0]*W, q[1]*H]);
+const manualPx = (list, W, H) => ({
+  rects: list.flatMap(s => (s.rects || []).map(r => [r[0]*W, r[1]*H, r[2]*W, r[3]*H])),
+  erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W]))
+});
 
 /* 編集画面に重ねる「塗った結果」（プレビューの解像度）。見本と同じものを使い回す */
 function paintedPreview(p, s){
   const poly = shapeCutPx(p, s), bb = polyBBox(poly), fill = $('#fill').value;
   const x = Math.round(bb.x1), y = Math.round(bb.y1), w = Math.max(1, Math.round(bb.w)), h = Math.max(1, Math.round(bb.h));
-  const key = JSON.stringify([poly, s.seeds || [], !!s.gut, fill]);
+  const key = JSON.stringify([poly, s.seeds || [], !!s.gut, fill, s.rects || [], s.erase || []]);
   if (!s._gut || s._gut.key !== key) {
-    const img = gutterPainted(p.pv, x, y, w, h, 8, 1, fill, !!s.gut, seedsPx(s, p.pv.width, p.pv.height));
+    const img = gutterPainted(p.pv, x, y, w, h, 8, 1, fill, !!s.gut, seedsPx(s, p.pv.width, p.pv.height), manualPx([s], p.pv.width, p.pv.height));
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     c.getContext('2d').drawImage(img, 8, 8, w, h, 0, 0, w, h);
     s._gut = { key, img, url: c.toDataURL(), x, y, w, h };
@@ -1169,7 +1202,7 @@ function panelCanvas(p, s, maxW, maxH){
 /* つないだコマの見本（プレビューの解像度で塗ってから縮める） */
 function groupCanvas(p, idx, maxW, maxH){
   const polys = idx.map(i => shapeCutPx(p, p.shapes[i]));
-  const key = JSON.stringify([polys, idx.map(i => p.shapes[i].seeds || [])]) + $('#fill').value;
+  const key = JSON.stringify([polys, idx.map(i => [p.shapes[i].seeds || [], p.shapes[i].rects || [], p.shapes[i].erase || []])]) + $('#fill').value;
   p._gc = p._gc || {};
   let src = p._gc[key];
   if (!src) {
@@ -1180,6 +1213,7 @@ function groupCanvas(p, idx, maxW, maxH){
     g.drawImage(p.pv, x, y, w, h, 0, 0, w, h);
     const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.pv.width, p.pv.height)).map(q => [q[0]-x, q[1]-y]);
     paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), 1, $('#fill').value, true, seeds);
+    applyManual(g, x, y, p.pv, manualPx(idx.map(i => p.shapes[i]), p.pv.width, p.pv.height), $('#fill').value);
     p._gc = { [key]: src };                             // 最新の1枚だけ持つ
   }
   const k = Math.min(maxW/src.width, maxH/src.height), dpr = window.devicePixelRatio || 1;
@@ -1306,7 +1340,26 @@ ov.addEventListener('pointerdown', e => {
   const p = pages[cur]; if (!p) return;
   const n = ptN(e), t = e.target, k = uscale();
 
-  if (bucketMode) {
+  // 塗りの道具は、クリックした点を含むコマ（選んでいるコマを優先）に効く
+  const hitShape = () => {
+    const P = toSvg(n, p), inShape = s => pointInPoly(P[0], P[1], toPx(s.poly, p));
+    return sel >= 0 && inShape(p.shapes[sel]) ? sel : p.shapes.findIndex(inShape);
+  };
+  if (tool === 'erase' || tool === 'prect') {
+    const i = hitShape(); if (i < 0) return;
+    snap(); sel = i;
+    const a = toSvg(n, p);
+    if (tool === 'erase') {
+      const r = +$('#eraseSize').value * k;              // 画面上のpx → プレビューのpx
+      drag = { mode:'erase', i, r: r / p.pv.width, pts: [[n[0], n[1]]] };
+      addEl('circle', { class:'erasemark', cx:a[0], cy:a[1], r });
+    } else {
+      drag = { mode:'prect', i, n0:n, el: addEl('rect', {class:'paintband', x:a[0], y:a[1], width:0, height:0, 'stroke-width':2*k}) };
+    }
+    ov.setPointerCapture(e.pointerId); e.preventDefault();
+    return;
+  }
+  if (tool === 'bucket') {
     // クリックした点を含むコマ（選んでいるコマを優先）に、塗り始めの点を足す。option＋クリックで近くの点を消す
     const P = toSvg(n, p);
     const inShape = s => pointInPoly(P[0], P[1], toPx(s.poly, p));
@@ -1321,7 +1374,7 @@ ov.addEventListener('pointerdown', e => {
     sel = i; renderShapes(); renderPanelList();
     return;
   }
-  if (splitMode) {
+  if (tool === 'split') {
     snap();
     const a = toSvg(n, p);
     drag = { mode:'split', n0:n, el: addEl('line', {class:'cutline', x1:a[0], y1:a[1], x2:a[0], y2:a[1], 'stroke-width':2*k}) };
@@ -1357,7 +1410,15 @@ ov.addEventListener('pointermove', e => {
   const p = pages[cur], n = ptN(e), W = p.pv.width, H = p.pv.height;
   const snapOn = $('#snapHV').checked;
 
-  if (drag.mode === 'new') {
+  if (drag.mode === 'erase') {
+    const last = drag.pts[drag.pts.length - 1];
+    if (Math.hypot((n[0]-last[0])*W, (n[1]-last[1])*H) >= drag.r * W * 0.4) {
+      drag.pts.push([n[0], n[1]]);
+      addEl('circle', { class:'erasemark', cx:n[0]*W, cy:n[1]*H, r: drag.r * W });
+    }
+    return;
+  }
+  if (drag.mode === 'new' || drag.mode === 'prect') {
     const x1 = Math.min(drag.n0[0], n[0]), y1 = Math.min(drag.n0[1], n[1]);
     const w = Math.abs(n[0] - drag.n0[0]), h = Math.abs(n[1] - drag.n0[1]);
     drag.el.setAttribute('x', x1*W); drag.el.setAttribute('y', y1*H);
@@ -1398,7 +1459,15 @@ ov.addEventListener('pointerup', () => {
   if (!drag) return;
   const p = pages[cur];
 
-  if (drag.mode === 'new') {
+  if (drag.mode === 'erase') {
+    const s = p.shapes[drag.i];
+    s.erase = (s.erase || []).concat(drag.pts.map(q => [q[0], q[1], drag.r]));
+  } else if (drag.mode === 'prect') {
+    drag.el.remove();
+    const r = drag.cur, s = p.shapes[drag.i];
+    if (r && r.w > 0.002 && r.h > 0.002) (s.rects = s.rects || []).push([r.x, r.y, r.x + r.w, r.y + r.h]);
+    else undoStack.pop();
+  } else if (drag.mode === 'new') {
     drag.el.remove();
     const r = drag.cur;
     if (r && r.w > 0.012 && r.h > 0.012) {
@@ -1454,7 +1523,8 @@ ov.addEventListener('dblclick', e => {
 
 function snap(){
   if (cur < 0) return;
-  undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()), link: !!s.link, gut: !!s.gut, seeds: (s.seeds || []).map(q => q.slice()) })) });
+  undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()), link: !!s.link, gut: !!s.gut, seeds: (s.seeds || []).map(q => q.slice()),
+    rects: (s.rects || []).map(q => q.slice()), erase: (s.erase || []).map(q => q.slice()) })) });
   if (undoStack.length > 60) undoStack.shift();
 }
 function undo(){
@@ -1487,7 +1557,7 @@ async function cropBlob(full, p, s, o, dark){
   }
   if (painted(s)) {
     const unit = p.W / p.pv.width, m = Math.round(8 * unit);
-    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H));
+    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H), manualPx([s], p.W, p.H));
     g.drawImage(E, m, m, w, h, 0, 0, w, h);
     E.width = E.height = 0;
   } else g.drawImage(full, x, y, w, h, 0, 0, w, h);
@@ -1512,6 +1582,7 @@ async function cropGroupBlob(full, p, idx, o, dark){
   g.drawImage(full, x, y, w, h, 0, 0, w, h);
   const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.W, p.H)).map(q => [q[0]-x, q[1]-y]);
   paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), Math.max(1, Math.round(1.2 * unit)), fill, true, seeds);
+  applyManual(g, x, y, full, manualPx(idx.map(i => p.shapes[i]), p.W, p.H), fill);
   const q = +$('#quality').value / 100;
   const blob = await new Promise(res => c.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', q));
   c.width = c.height = 0;
@@ -1628,18 +1699,16 @@ $('#drop').onclick = () => $('#file').click();
 $('#btnClear').onclick = () => { if (pages.length && confirm('全部消します。よろしいですか？')) { pages = []; cur = -1; sel = -1; undoStack.length = 0; renderAll(); } };
 $('#btnExport').onclick = exportAll;
 
-$('#btnBucket').onclick = () => {
-  bucketMode = !bucketMode;
-  if (bucketMode && splitMode) $('#btnSplit').click();
-  $('#btnBucket').classList.toggle('on', bucketMode);
-  ov.classList.toggle('bucket', bucketMode);
-};
-$('#btnSplit').onclick = () => {
-  if (!splitMode && bucketMode) $('#btnBucket').click();
-  splitMode = !splitMode;
-  $('#btnSplit').classList.toggle('on', splitMode);
-  ov.classList.toggle('split', splitMode);
-};
+function setTool(t){
+  tool = tool === t ? null : t;
+  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect']])
+    $('#'+id).classList.toggle('on', tool === name);
+  ov.setAttribute('class', tool || '');
+}
+$('#btnSplit').onclick = () => setTool('split');
+$('#btnBucket').onclick = () => setTool('bucket');
+$('#btnErase').onclick = () => setTool('erase');
+$('#btnPaintRect').onclick = () => setTool('prect');
 $('#btnRect').onclick = () => {
   const p = pages[cur]; if (!p || sel < 0) return;
   snap();
@@ -1704,8 +1773,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); snap(); pages[cur].shapes.splice(sel,1); sel = -1; renderShapes(); renderPanelList(); renderThumbs(); return;
   }
   if (e.key === 'Escape') {
-    if (splitMode) $('#btnSplit').click();
-    if (bucketMode) $('#btnBucket').click();
+    if (tool) setTool(tool);
     sel = -1; renderShapes(); renderPanelList();
   }
   if (e.key === 'ArrowDown' && cur < pages.length-1) { e.preventDefault(); cur++; sel = -1; renderAll(); }
