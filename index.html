@@ -74,6 +74,8 @@
   #stage canvas{display:block;width:100%;height:auto}
   #ov{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;overflow:visible}
   #ov.split{cursor:cell}
+  #toolHint{display:none;position:absolute;top:6px;left:50%;transform:translateX(-50%);z-index:20;background:var(--accent);color:#fff;
+            font-size:12px;padding:3px 12px;border-radius:12px;white-space:nowrap;pointer-events:none;line-height:1.6}
   .mk{fill:rgba(255,176,32,.10);stroke:var(--accent2)}
   .mk.on{fill:rgba(76,141,255,.16);stroke:var(--accent)}
   .mk:hover{fill:rgba(255,176,32,.2)}
@@ -90,7 +92,7 @@
   #ov.bucket{cursor:copy}
   #ov.erase{cursor:cell}
   #ov.prect{cursor:crosshair}
-  .erasemark{fill:rgba(255,255,255,.55);stroke:none;pointer-events:none}
+  .erasemark{fill:#fff;stroke:none;pointer-events:none}
   .paintband{fill:rgba(0,0,0,.55);stroke:var(--accent);stroke-dasharray:6 4}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
   .cutline{stroke:#ff4d8d;stroke-linecap:round}
@@ -202,6 +204,7 @@
       <span id="zoomV">100%</span>
     </div>
     <div id="editBody">
+      <div id="toolHint"></div>
       <div id="stage" style="display:none"><canvas id="cv"></canvas><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
       <div class="blank" id="blank">左に原稿をドロップしてください<br><span style="font-size:12px;color:var(--muted)">PSDは一番上の合成結果（見たまま）を読み込みます</span></div>
       <div id="dropBig">ここに落とす</div>
@@ -1379,7 +1382,8 @@ ov.addEventListener('pointerdown', e => {
     const P = toSvg(n, p), inShape = s => pointInPoly(P[0], P[1], toPx(s.poly, p));
     return sel >= 0 && inShape(p.shapes[sel]) ? sel : p.shapes.findIndex(inShape);
   };
-  if (tool === 'erase' || tool === 'prect') {
+  const onHandle = t.classList.contains('hv') || t.classList.contains('he');
+  if (!onHandle && (tool === 'erase' || tool === 'prect')) {
     const i = hitShape(); if (i < 0) return;
     snap(); sel = i;
     const a = toSvg(n, p);
@@ -1393,7 +1397,7 @@ ov.addEventListener('pointerdown', e => {
     ov.setPointerCapture(e.pointerId); e.preventDefault();
     return;
   }
-  if (tool === 'bucket') {
+  if (!onHandle && tool === 'bucket') {
     // クリックした点を含むコマ（選んでいるコマを優先）に、塗り始めの点を足す。option＋クリックで近くの点を消す
     const P = toSvg(n, p);
     const inShape = s => pointInPoly(P[0], P[1], toPx(s.poly, p));
@@ -1405,10 +1409,10 @@ ov.addEventListener('pointerdown', e => {
       const T = 12 * k;
       s.seeds = (s.seeds || []).filter(q => Math.hypot(q[0]*p.pv.width - P[0], q[1]*p.pv.height - P[1]) > T);
     } else (s.seeds = s.seeds || []).push([n[0], n[1]]);
-    sel = i; renderShapes(); renderPanelList();
+    sel = i; setTool(null); renderShapes(); renderPanelList();   // 1回使ったら、選ぶ・動かすに戻る
     return;
   }
-  if (tool === 'split') {
+  if (!onHandle && tool === 'split') {
     snap();
     const a = toSvg(n, p);
     drag = { mode:'split', n0:n, el: addEl('line', {class:'cutline', x1:a[0], y1:a[1], x2:a[0], y2:a[1], 'stroke-width':2*k}) };
@@ -1501,6 +1505,7 @@ ov.addEventListener('pointerup', () => {
     const r = drag.cur, s = p.shapes[drag.i];
     if (r && r.w > 0.002 && r.h > 0.002) (s.rects = s.rects || []).push([r.x, r.y, r.x + r.w, r.y + r.h]);
     else undoStack.pop();
+    setTool(null);                                     // 1回使ったら、選ぶ・動かすに戻る
   } else if (drag.mode === 'new') {
     drag.el.remove();
     const r = drag.cur;
@@ -1733,11 +1738,15 @@ $('#drop').onclick = () => $('#file').click();
 $('#btnClear').onclick = () => { if (pages.length && confirm('全部消します。よろしいですか？')) { pages = []; cur = -1; sel = -1; undoStack.length = 0; renderAll(); } };
 $('#btnExport').onclick = exportAll;
 
+/* 道具の切り替え。同じボタンをもう一度押すか Esc で、ふつうの操作（選ぶ・動かす）に戻る */
 function setTool(t){
-  tool = tool === t ? null : t;
+  tool = (t === null || tool === t) ? null : t;
   for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
+  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る' }[tool];
+  $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
+  $('#toolHint').style.display = label ? 'block' : 'none';
 }
 $('#btnSplit').onclick = () => setTool('split');
 $('#btnBucket').onclick = () => setTool('bucket');
