@@ -81,6 +81,10 @@
   .num.on rect{fill:var(--accent)}
   .num.on text{fill:#fff}
   .hv{fill:var(--accent);stroke:#fff;cursor:move}
+  .he{stroke:transparent;fill:none}
+  .he:hover{stroke:rgba(76,141,255,.35)}
+  .hm{fill:#fff;stroke:var(--accent)}
+  .cutprev{fill:none;stroke:#ff4d8d;stroke-dasharray:5 4;pointer-events:none}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
   .cutline{stroke:#ff4d8d;stroke-linecap:round}
   .blank{color:var(--muted);text-align:center;padding:60px 20px;font-size:13px;line-height:2}
@@ -88,7 +92,7 @@
   .pitem{display:flex;gap:7px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px;margin-bottom:6px;cursor:pointer}
   .pitem.on{border-color:var(--accent)}
   .pitem .no{font-weight:700;font-size:12px;width:20px;text-align:center;color:var(--accent2)}
-  .pitem canvas{background:#000;border-radius:3px;display:block;max-width:104px;max-height:78px;width:auto;height:auto}
+  .pitem canvas{background:#000;border-radius:3px;display:block}
   .pitem .ops{margin-left:auto;display:flex;flex-direction:column;gap:2px}
 
   .set{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px;display:flex;flex-direction:column;gap:6px}
@@ -133,7 +137,10 @@
       <dl>
         <div><span class="k">何もない所をドラッグ</span><span>四角いコマを足す</span></div>
         <div><span class="k">コマの中をドラッグ</span><span>動かす</span></div>
-        <div><span class="k">○をドラッグ</span><span>その角を動かす（斜めコマはこれで合わせる）</span></div>
+        <div><span class="k">辺をドラッグ</span><span>その辺だけ平行に動かす（縦横に伸び縮み。台形にならない）</span></div>
+        <div><span class="k">○をドラッグ</span><span>四角いコマは四角のまま角を動かす。斜めコマは角だけ動かす</span></div>
+        <div><span class="k"><kbd>⌘</kbd>＋○</span><span>四角いコマでも、角だけを自由に動かす（斜めにしたいとき）</span></div>
+        <div><span class="k"><kbd>shift</kbd>＋中をドラッグ</span><span>水平か垂直にだけ動かす</span></div>
         <div><span class="k">辺をダブルクリック</span><span>角を1つ増やす</span></div>
         <div><span class="k"><kbd>option</kbd>＋○</span><span>その角を消す</span></div>
         <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
@@ -169,6 +176,7 @@
       <strong id="curName">—</strong>
       <span id="curSize"></span>
       <span class="sp"></span>
+      <label class="ck" title="角を動かすとき、となりの角と水平・垂直にそろえる"><input type="checkbox" id="snapHV" checked> 水平・垂直にスナップ</label>
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnRect" class="mini">四角にする</button>
       <button id="btnDetect" class="mini">このページを再検出</button>
@@ -197,13 +205,17 @@
       </div>
       <div class="row" style="gap:10px"><label class="ck"><input type="checkbox" id="rtl" checked> 右→左</label><button id="btnReorder" class="mini">番号を振り直す</button></div>
     </div>
-    <div class="colhead"><strong>このページのコマ</strong><span class="sp"></span><span id="shapeCnt">0</span></div>
+    <div class="colhead"><strong>このページのコマ</strong><span id="shapeCnt">0</span><span class="sp"></span>
+      <span>大きさ</span><input type="range" id="thumbSize" min="60" max="360" value="110" style="width:80px"></div>
     <div class="colbody" id="panelList"></div>
     <div class="set">
       <div class="row"><span>形式</span>
         <select id="fmt" style="flex:1"><option value="png">PNG（劣化なし）</option><option value="jpg">JPEG</option></select>
       </div>
       <div class="row" id="rowQ" style="display:none"><span>画質</span><input type="range" id="quality" min="50" max="100" value="92"><span class="v" id="vQ">92</span></div>
+      <div class="row" title="コマの枠線のどこで切り抜くか"><span>切る位置</span>
+        <select id="cutPos" style="flex:1"><option value="in" selected>枠線の内側（線を含めない）</option><option value="mid">枠線の中央</option><option value="out">枠線の外側（線を含める）</option></select>
+      </div>
       <div class="row"><span>コマ外の塗り</span>
         <select id="fill" style="flex:1"><option value="#000000">黒</option><option value="#ffffff">白</option><option value="none">透明（PNGのみ）</option></select>
       </div>
@@ -264,21 +276,137 @@ const isRectPoly = poly => poly.length===4 && poly.every((p,i)=>{
   const q=poly[(i+1)%4];
   return Math.abs(p[0]-q[0])<1e-6 || Math.abs(p[1]-q[1])<1e-6;
 });
-/* 外側へ g だけ広げる（各辺を法線方向に平行移動して交点を取り直す） */
-function offsetPoly(poly, g, W, H){
-  if (!g) return poly;
-  const c = centroid(poly), n = poly.length, planes = [];
-  for(let i=0;i<n;i++){
-    const p=poly[i], q=poly[(i+1)%n];
-    let nx=q[1]-p[1], ny=-(q[0]-p[0]); const L=Math.hypot(nx,ny); if(L<1e-9) continue;
-    nx/=L; ny/=L;
-    if (nx*(c[0]-p[0])+ny*(c[1]-p[1]) > 0) { nx=-nx; ny=-ny; }   // 外向きに
-    planes.push({nx,ny,d:nx*p[0]+ny*p[1]+g});
+function pointInPoly(x, y, poly){
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
   }
-  let out=[[-W,-H],[W*2,-H],[W*2,H*2],[-W,H*2]];
-  for(const pl of planes) out = clipHalf(out, pl.nx, pl.ny, pl.d);
-  return out.length>=3 ? out : poly;
+  return inside;
 }
+/* 辺 a→b の、多角形の内側を向いた単位法線 */
+function inwardNormal(a, b, poly){
+  const dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy) || 1;
+  let nx = -dy/L, ny = dx/L;
+  const mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2, eps = Math.min(0.75, L*0.01);
+  if (!pointInPoly(mx + nx*eps, my + ny*eps, poly)) { nx = -nx; ny = -ny; }
+  return [nx, ny];
+}
+/* 直線 p+t*d と q+u*e の交点（平行なら null） */
+function isect(p, d, q, e){
+  const den = d[0]*e[1] - d[1]*e[0];
+  if (Math.abs(den) < 1e-9 * Math.hypot(d[0],d[1]) * Math.hypot(e[0],e[1])) return null;
+  const t = ((q[0]-p[0])*e[1] - (q[1]-p[1])*e[0]) / den;
+  return [p[0] + d[0]*t, p[1] + d[1]*t];
+}
+/* 辺ごとに内側へ dists[i] だけ平行移動して、角を取り直す（負なら外側へ）。L字などの凹んだ形でもよい */
+function offsetEdges(poly, dists){
+  const n = poly.length, L = [];
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i+1)%n], d = [b[0]-a[0], b[1]-a[1]];
+    if (Math.hypot(d[0], d[1]) < 1e-9) { L.push(null); continue; }
+    const [nx, ny] = inwardNormal(a, b, poly), k = dists[i] || 0;
+    L.push({ p:[a[0]+nx*k, a[1]+ny*k], d });
+  }
+  return poly.map((pt, i) => {
+    const A = L[(i-1+n)%n], B = L[i];
+    if (!A || !B) return pt.slice();
+    return isect(A.p, A.d, B.p, B.d) || B.p.slice();
+  });
+}
+
+/* 検出したコマの形を整える（プレビューのpx）：
+   ・6px未満の短い辺（角の小さな面取り）をつぶす。四角いコマが5角形になって、
+     角をつかむと台形になってしまうのを防ぐ
+   ・ほぼ水平・垂直（1.5°以内）の辺は、ぴったり水平・垂直にする
+   ・一直線に並んだ余計な角を消す */
+function tidyPoly(P){
+  let Q = P.map(q => q.slice());
+  for (let guard = 0; guard < 20 && Q.length > 3; guard++) {
+    const n = Q.length;
+    let k = -1;
+    for (let i = 0; i < n; i++) { const a = Q[i], b = Q[(i+1)%n]; if (Math.hypot(b[0]-a[0], b[1]-a[1]) < 6) { k = i; break; } }
+    if (k < 0) break;
+    const pr = Q[(k-1+n)%n], a = Q[k], b = Q[(k+1)%n], nx = Q[(k+2)%n];
+    const x = isect(pr, [a[0]-pr[0], a[1]-pr[1]], nx, [b[0]-nx[0], b[1]-nx[1]]);
+    const pt = x && Math.hypot(x[0]-a[0], x[1]-a[1]) < 20 ? x : [(a[0]+b[0])/2, (a[1]+b[1])/2];
+    Q = Q.map((q, i) => i === k ? pt : q).filter((q, i) => i !== (k+1)%n);
+  }
+  const tol = Math.tan(1.5 * Math.PI / 180);
+  for (let i = 0; i < Q.length; i++) {
+    const a = Q[i], b = Q[(i+1)%Q.length], dx = Math.abs(b[0]-a[0]), dy = Math.abs(b[1]-a[1]);
+    if (dy <= dx*tol) { const y = (a[1]+b[1])/2; a[1] = y; b[1] = y; }
+    else if (dx <= dy*tol) { const x = (a[0]+b[0])/2; a[0] = x; b[0] = x; }
+  }
+  for (let i = 0; Q.length > 3 && i < Q.length; ) {
+    const n = Q.length, pr = Q[(i-1+n)%n], a = Q[i], nx = Q[(i+1)%n];
+    const cr = (a[0]-pr[0])*(nx[1]-a[1]) - (a[1]-pr[1])*(nx[0]-a[0]);
+    if (Math.abs(cr) < 1e-6 * Math.hypot(a[0]-pr[0], a[1]-pr[1]) * Math.hypot(nx[0]-a[0], nx[1]-a[1]) + 1e-9) Q.splice(i, 1); else i++;
+  }
+  return Q;
+}
+
+/* 画像の暗い画素を引く関数（256px角ずつ読み込んで使い回す。原寸でも重くならない） */
+function darkSampler(cv){
+  const ctx = cv.getContext('2d'), W = cv.width, H = cv.height, tiles = new Map();
+  return (x, y) => {
+    x = Math.round(x); y = Math.round(y);
+    if (x < 0 || y < 0 || x >= W || y >= H) return false;
+    const tx = x >> 8, ty = y >> 8, key = ty * 65536 + tx;
+    let t = tiles.get(key);
+    if (!t) {
+      const w = Math.min(256, W - tx*256), h = Math.min(256, H - ty*256);
+      t = { w, d: ctx.getImageData(tx*256, ty*256, w, h).data };
+      tiles.set(key, t);
+    }
+    const i = ((y & 255) * t.w + (x & 255)) * 4, d = t.d;
+    if (d[i+3] < 128) return false;
+    return (d[i]*299 + d[i+1]*587 + d[i+2]*114) / 1000 < 110;
+  };
+}
+
+/* 各辺について、辺から内側にある枠線の「始まり s」と「太さ t」を測る。
+   unit はその画像での「プレビュー1px」の大きさ（原寸なら約4px）。
+   枠線の無い辺（断ち切り・ページの端）は null */
+function frameLines(poly, dark, unit){
+  const n = poly.length, out = [];
+  const S1 = Math.round(12*unit), S2 = Math.round(8*unit), back = Math.round(2*unit), gapTol = Math.max(1, Math.round(unit));
+  const med = a => { const b = a.slice().sort((x,y) => x-y); return b[b.length >> 1]; };
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i+1)%n];
+    if (Math.hypot(b[0]-a[0], b[1]-a[1]) < 20*unit) { out.push(null); continue; }
+    const [nx, ny] = inwardNormal(a, b, poly);
+    const ss = [], ts = [];
+    for (let k = 0; k < 24; k++) {
+      const f = 0.1 + 0.8*k/23, px = a[0] + (b[0]-a[0])*f, py = a[1] + (b[1]-a[1])*f;
+      let st = null;
+      for (let d = -back; d <= S1; d++) if (dark(px + nx*d, py + ny*d)) { st = d; break; }
+      if (st === null) continue;
+      let t = 0, gap = 0;
+      for (let d = st; d <= st + S2 + gapTol + 1; d++) {
+        if (dark(px + nx*d, py + ny*d)) { t = d - st + 1; gap = 0; }
+        else if (++gap > gapTol) break;
+      }
+      if (t > S2) continue;                                   // 太すぎ＝ベタや絵
+      ss.push(st); ts.push(t);
+    }
+    if (ss.length < 12) { out.push(null); continue; }
+    const sm = med(ss), keep = ss.map((v, k) => Math.abs(v - sm) <= 2*unit ? k : -1).filter(k => k >= 0);
+    if (keep.length < 12) { out.push(null); continue; }     // 位置がそろっていない＝枠線ではなく絵
+    out.push({ s: sm, t: med(keep.map(k => ts[k])) });
+  }
+  return out;
+}
+
+/* 切り抜く多角形（px）。mode: in＝線の内側 / mid＝線の中央 / out＝線の外側（線を含む）。grow は外へ広げるpx。
+   どのモードも、枠線を測ってその位置に合わせる（検出はプレビュー基準なので、原寸では数pxずれているため） */
+function cutPolygon(poly, dark, unit, mode, grow){
+  const lines = frameLines(poly, dark, unit);
+  const at = { in: l => l.s + l.t + unit, mid: l => l.s + l.t/2, out: l => l.s }[mode];
+  const dists = lines.map(l => (l ? at(l) : 0) - (grow || 0));
+  return dists.every(d => !d) ? poly : offsetEdges(poly, dists);
+}
+const cutMode = () => $('#cutPos').value;
 
 /* ============================================================
    ファイル読み込み
@@ -734,7 +862,7 @@ function detect(pv, o){
     const poly = refine(leaf, M) || leaf.poly;
     const bb = polyBBox(poly);
     if (bb.w < minW * 0.7 || bb.h < minH * 0.7) continue;
-    const norm = q => q.map(p => [p[0]/M.W, p[1]/M.H]);
+    const norm = q => tidyPoly(q).map(p => [p[0]/M.W, p[1]/M.H]);
     // 角の切り出しは、ページの15%以上ある大きなコマだけ（合体している疑いがあるもの）
     const cv = bb.w * bb.h >= 0.15 * M.W * M.H ? carveCorner(poly, M, P) : null;
     if (cv) {
@@ -825,39 +953,69 @@ function renderShapes(){
   if (!p) { ov.innerHTML = ''; return; }
   const W = p.pv.width, H = p.pv.height, k = uscale();
   let h = '';
+  const pts = P => P.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(' ');
   p.shapes.forEach((s, i) => {
-    const pts = s.poly.map(pt => `${(pt[0]*W).toFixed(1)},${(pt[1]*H).toFixed(1)}`).join(' ');
-    h += `<polygon class="mk${i===sel?' on':''}" data-i="${i}" points="${pts}" stroke-width="${(2*k).toFixed(2)}"/>`;
+    h += `<polygon class="mk${i===sel?' on':''}" data-i="${i}" points="${pts(toPx(s.poly, p))}" stroke-width="${(2*k).toFixed(2)}"/>`;
   });
+  // 実際に切り抜く位置（切る位置・枠を広げるの設定を反映）
+  p.shapes.forEach(s => { h += `<polygon class="cutprev" points="${pts(shapeCutPx(p, s))}" stroke-width="${(1.5*k).toFixed(2)}"/>`; });
   p.shapes.forEach((s, i) => {
     const bb = polyBBox(s.poly);
     h += `<g class="num${i===sel?' on':''}" transform="translate(${(bb.x1*W).toFixed(1)},${(bb.y1*H).toFixed(1)})" pointer-events="none">
             <rect width="${22*k}" height="${18*k}" rx="${3*k}"/>
             <text x="${11*k}" y="${13*k}" font-size="${12*k}">${i+1}</text></g>`;
   });
-  if (sel >= 0 && p.shapes[sel]) p.shapes[sel].poly.forEach((pt, j) => {
-    h += `<circle class="hv" data-v="${j}" cx="${(pt[0]*W).toFixed(1)}" cy="${(pt[1]*H).toFixed(1)}" r="${6*k}" stroke-width="${2*k}"/>`;
-  });
+  if (sel >= 0 && p.shapes[sel]) {
+    const P = toPx(p.shapes[sel].poly, p);
+    // 辺（つかむと平行に動く）。当たり判定は太い透明の線、目印に中点の小さな四角
+    P.forEach((a, j) => {
+      const b = P[(j+1) % P.length];
+      const cur = Math.abs(b[1]-a[1]) < 0.5 ? 'ns-resize' : Math.abs(b[0]-a[0]) < 0.5 ? 'ew-resize' : 'move';
+      h += `<line class="he" data-e="${j}" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke-width="${12*k}" style="cursor:${cur}"/>`;
+      const mx = (a[0]+b[0])/2, my = (a[1]+b[1])/2;
+      h += `<rect class="hm" x="${mx-4*k}" y="${my-4*k}" width="${8*k}" height="${8*k}" stroke-width="${1.5*k}" pointer-events="none"/>`;
+    });
+    P.forEach((q, j) => {
+      h += `<circle class="hv" data-v="${j}" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${6*k}" stroke-width="${2*k}"/>`;
+    });
+  }
   ov.innerHTML = h;
   $('#shapeCnt').textContent = p.shapes.length + 'コマ';
 }
 
-function panelCanvas(pv, s, maxW, maxH){
-  const W = pv.width, H = pv.height, bb = polyBBox(s.poly);
-  const sx = bb.x1*W, sy = bb.y1*H, sw = Math.max(1, bb.w*W), sh = Math.max(1, bb.h*H);
-  const k = Math.min(maxW/sw, maxH/sh, 1);
+const toPx = (poly, p) => poly.map(q => [q[0]*p.pv.width, q[1]*p.pv.height]);
+const toN  = (poly, p) => poly.map(q => [clamp(q[0]/p.pv.width), clamp(q[1]/p.pv.height)]);
+
+/* 実際に切り抜く多角形（プレビューのpx）。枠線はプレビューで測った近似。書き出しは原寸で測り直す */
+function shapeCutPx(p, s){
+  const mode = cutMode(), grow = +$('#sGrow').value * p.pv.width / p.W;
+  const key = JSON.stringify(s.poly) + mode + grow;
+  if (s._cut && s._cut.key === key) return s._cut.poly;
+  if (!p.dark) p.dark = darkSampler(p.pv);
+  const poly = cutPolygon(toPx(s.poly, p), p.dark, 1, mode, grow);
+  s._cut = { key, poly };
+  return poly;
+}
+
+function panelCanvas(p, s, maxW, maxH){
+  const poly = shapeCutPx(p, s), bb = polyBBox(poly);
+  const sw = Math.max(1, bb.w), sh = Math.max(1, bb.h);
+  const k = Math.min(maxW/sw, maxH/sh), dpr = window.devicePixelRatio || 1;
+  const cw = Math.max(1, Math.round(sw*k)), ch = Math.max(1, Math.round(sh*k));
   const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(sw*k)); c.height = Math.max(1, Math.round(sh*k));
-  const g = c.getContext('2d');
+  c.width = Math.round(cw*dpr); c.height = Math.round(ch*dpr);
+  c.style.width = cw + 'px'; c.style.height = ch + 'px';
+  const g = c.getContext('2d'), f = k*dpr;
+  g.imageSmoothingQuality = 'high';
   const fill = $('#fill').value;
   g.fillStyle = fill === 'none' ? '#888' : fill;
   g.fillRect(0, 0, c.width, c.height);
-  if (!isRectPoly(s.poly)) {
+  if (!isRectPoly(poly)) {
     g.beginPath();
-    s.poly.forEach((pt, j) => { const x=(pt[0]*W-sx)*k, y=(pt[1]*H-sy)*k; j ? g.lineTo(x,y) : g.moveTo(x,y); });
+    poly.forEach((q, j) => { const x = (q[0]-bb.x1)*f, y = (q[1]-bb.y1)*f; j ? g.lineTo(x,y) : g.moveTo(x,y); });
     g.closePath(); g.clip();
   }
-  g.drawImage(pv, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  g.drawImage(p.pv, bb.x1, bb.y1, sw, sh, 0, 0, c.width, c.height);
   return c;
 }
 
@@ -868,7 +1026,8 @@ function renderPanelList(){
     const el = document.createElement('div');
     el.className = 'pitem' + (i === sel ? ' on' : '');
     el.innerHTML = `<div class="no">${i+1}</div>`;
-    el.appendChild(panelCanvas(p.pv, s, 104, 78));
+    const size = +$('#thumbSize').value;
+    el.appendChild(panelCanvas(p, s, size, size * 1.4));
     const ops = document.createElement('div'); ops.className = 'ops';
     ops.innerHTML = `<button class="mini" data-o="up">↑</button><button class="mini" data-o="dn">↓</button><button class="mini warn" data-o="rm">×</button>`;
     el.appendChild(ops);
@@ -910,6 +1069,17 @@ function addEl(name, attrs){
   return el;
 }
 
+/* 辺 j を法線方向に d だけ平行移動。となりの辺は向きを保ったまま伸び縮みする（台形にならない） */
+function moveEdge(P, j, d, nrm){
+  const n = P.length, a = P[j], b = P[(j+1)%n];
+  const dir = [b[0]-a[0], b[1]-a[1]];
+  const pa = [a[0]+nrm[0]*d, a[1]+nrm[1]*d], pb = [b[0]+nrm[0]*d, b[1]+nrm[1]*d];
+  const pr = P[(j-1+n)%n], nx = P[(j+2)%n], out = P.map(q => q.slice());
+  out[j] = isect(pr, [a[0]-pr[0], a[1]-pr[1]], pa, dir) || pa;
+  out[(j+1)%n] = isect(nx, [b[0]-nx[0], b[1]-nx[1]], pa, dir) || pb;
+  return out;
+}
+
 ov.addEventListener('pointerdown', e => {
   const p = pages[cur]; if (!p) return;
   const n = ptN(e), t = e.target, k = uscale();
@@ -926,13 +1096,16 @@ ov.addEventListener('pointerdown', e => {
       return;
     }
     snap();
-    drag = { mode:'vertex', i:sel, v:j, el:t, poly: ov.querySelector(`.mk[data-i="${sel}"]`), moved:false };
+    drag = { mode:'vertex', i:sel, v:j, start: p.shapes[sel].poly.map(q => q.slice()), free: e.metaKey || e.ctrlKey, moved:false };
+  } else if (t.classList.contains('he')) {
+    snap();
+    const P = toPx(p.shapes[sel].poly, p), j = +t.dataset.e;
+    drag = { mode:'edge', i:sel, e:j, start:P, nrm: inwardNormal(P[j], P[(j+1)%P.length], P), m0: toSvg(n, p), moved:false };
   } else if (t.classList.contains('mk')) {
     const i = +t.dataset.i;
     if (i !== sel) { sel = i; renderShapes(); renderPanelList(); }
     snap();
-    drag = { mode:'move', i, n0:n, start: p.shapes[i].poly.map(q => q.slice()),
-             el: ov.querySelector(`.mk[data-i="${i}"]`), moved:false };
+    drag = { mode:'move', i, n0:n, start: p.shapes[i].poly.map(q => q.slice()), moved:false };
   } else {
     if (sel >= 0) { sel = -1; renderShapes(); renderPanelList(); }
     const a = toSvg(n, p);
@@ -945,6 +1118,7 @@ ov.addEventListener('pointerdown', e => {
 ov.addEventListener('pointermove', e => {
   if (!drag) return;
   const p = pages[cur], n = ptN(e), W = p.pv.width, H = p.pv.height;
+  const snapOn = $('#snapHV').checked;
 
   if (drag.mode === 'new') {
     const x1 = Math.min(drag.n0[0], n[0]), y1 = Math.min(drag.n0[1], n[1]);
@@ -953,19 +1127,48 @@ ov.addEventListener('pointermove', e => {
     drag.el.setAttribute('width', w*W); drag.el.setAttribute('height', h*H);
     drag.cur = { x:x1, y:y1, w, h };
   } else if (drag.mode === 'split') {
-    const a = toSvg(n, p);
+    let n1 = n;
+    if (snapOn) {                                     // 水平・垂直から5°以内なら、ぴったりにする
+      const dx = (n[0]-drag.n0[0])*W, dy = (n[1]-drag.n0[1])*H;
+      const ang = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI) % 90;
+      if (ang < 5 || ang > 85) n1 = Math.abs(dx) > Math.abs(dy) ? [n[0], drag.n0[1]] : [drag.n0[0], n[1]];
+    }
+    const a = toSvg(n1, p);
     drag.el.setAttribute('x2', a[0]); drag.el.setAttribute('y2', a[1]);
-    drag.n1 = n;
+    drag.n1 = n1;
   } else if (drag.mode === 'move') {
-    const dx = n[0] - drag.n0[0], dy = n[1] - drag.n0[1];
-    const poly = drag.start.map(q => [clamp(q[0]+dx), clamp(q[1]+dy)]);
-    p.shapes[drag.i].poly = poly; drag.moved = true;
-    drag.el.setAttribute('points', poly.map(q => `${q[0]*W},${q[1]*H}`).join(' '));
+    let dx = n[0] - drag.n0[0], dy = n[1] - drag.n0[1];
+    if (e.shiftKey) { if (Math.abs(dx*W) > Math.abs(dy*H)) dy = 0; else dx = 0; }   // shiftで水平か垂直だけ
+    p.shapes[drag.i].poly = drag.start.map(q => [clamp(q[0]+dx), clamp(q[1]+dy)]);
+    drag.moved = true; renderShapes();
   } else if (drag.mode === 'vertex') {
-    const poly = p.shapes[drag.i].poly;
-    poly[drag.v] = [n[0], n[1]]; drag.moved = true;
-    drag.el.setAttribute('cx', n[0]*W); drag.el.setAttribute('cy', n[1]*H);
-    if (drag.poly) drag.poly.setAttribute('points', poly.map(q => `${q[0]*W},${q[1]*H}`).join(' '));
+    const st = drag.start;
+    let poly;
+    if (isRectPoly(st) && !drag.free) {
+      // 四角は四角のまま：向かいの角を止めて、つかんだ角を動かす
+      const o = st[(drag.v + 2) % 4];
+      const x1 = Math.min(o[0], n[0]), x2 = Math.max(o[0], n[0]), y1 = Math.min(o[1], n[1]), y2 = Math.max(o[1], n[1]);
+      if (x2 - x1 < 0.005 || y2 - y1 < 0.005) return;
+      poly = [[x1,y1],[x2,y1],[x2,y2],[x1,y2]];
+    } else {
+      const m = toSvg(n, p);
+      if (snapOn) {                                   // となりの角と水平・垂直にそろう所に吸い付く
+        const P = toPx(st, p), T = 8 * uscale();
+        for (const q of [P[(drag.v - 1 + P.length) % P.length], P[(drag.v + 1) % P.length]]) {
+          if (Math.abs(m[0] - q[0]) < T) m[0] = q[0];
+          if (Math.abs(m[1] - q[1]) < T) m[1] = q[1];
+        }
+      }
+      poly = st.map(q => q.slice());
+      poly[drag.v] = [clamp(m[0]/W), clamp(m[1]/H)];
+    }
+    p.shapes[drag.i].poly = poly; drag.moved = true; renderShapes();
+  } else if (drag.mode === 'edge') {
+    const m = toSvg(n, p);
+    const d = (m[0]-drag.m0[0])*drag.nrm[0] + (m[1]-drag.m0[1])*drag.nrm[1];
+    const poly = toN(moveEdge(drag.start, drag.e, d, drag.nrm), p);
+    if (polyArea(poly) < 1e-4) return;                // 反対側の辺を越えてつぶれないように
+    p.shapes[drag.i].poly = poly; drag.moved = true; renderShapes();
   }
 });
 
@@ -1010,8 +1213,10 @@ function splitBy(a, b){
 
 /* 辺をダブルクリックで角を増やす */
 ov.addEventListener('dblclick', e => {
-  const p = pages[cur]; if (!p || !e.target.classList.contains('mk')) return;
-  const i = +e.target.dataset.i, poly = p.shapes[i].poly, n = ptN(e);
+  const p = pages[cur]; if (!p) return;
+  const t = e.target;
+  if (!t.classList.contains('mk') && !t.classList.contains('he')) return;
+  const i = t.classList.contains('he') ? sel : +t.dataset.i, poly = p.shapes[i].poly, n = ptN(e);
   let bi = 0, bd = Infinity;
   for (let j = 0; j < poly.length; j++) {
     const a = poly[j], b = poly[(j+1)%poly.length];
@@ -1040,9 +1245,10 @@ function undo(){
 ============================================================ */
 function ext(){ return $('#fmt').value === 'jpg' ? 'jpg' : 'png'; }
 
-async function cropBlob(full, p, s, o){
+async function cropBlob(full, p, s, o, dark){
+  // 枠線の位置は原寸で測り直す（プレビューでは線が1〜2pxしかないため）
   const poly0 = s.poly.map(q => [q[0]*p.W, q[1]*p.H]);
-  const poly = offsetPoly(poly0, o.grow, p.W, p.H);
+  const poly = cutPolygon(poly0, dark, p.W / p.pv.width, cutMode(), o.grow);
   const bb = polyBBox(poly);
   const x = Math.round(bb.x1), y = Math.round(bb.y1);
   const w = Math.max(1, Math.round(bb.w)), h = Math.max(1, Math.round(bb.h));
@@ -1076,9 +1282,9 @@ async function exportAll(){
       if (!p.shapes.length) continue;
       busy(true, `${p.name} を原寸で読み込み中…`, done/total*100);
       await new Promise(r => setTimeout(r, 0));
-      const full = await decodeFile(p.file);
+      const full = await decodeFile(p.file), dark = darkSampler(full);
       for (let i = 0; i < p.shapes.length; i++) {
-        const blob = await cropBlob(full, p, p.shapes[i], o);
+        const blob = await cropBlob(full, p, p.shapes[i], o, dark);
         const no = String(serial ? ++n : i+1).padStart(serial ? 3 : 2, '0');
         const base = pre ? `${pre}_${serial ? '' : p.base + '_'}` : `${p.base}_`;
         files.push({ name: `${base}${no}.${ext()}`.replace(/_+/g,'_'), data: new Uint8Array(await blob.arrayBuffer()) });
@@ -1198,6 +1404,11 @@ $('#zoom').oninput = e => { zoom = +e.target.value / 100; $('#zoomV').textConten
 $('#fmt').onchange = e => { $('#rowQ').style.display = e.target.value === 'jpg' ? 'flex' : 'none'; };
 $('#quality').oninput = e => $('#vQ').textContent = e.target.value;
 $('#fill').onchange = () => renderPanelList();
+$('#cutPos').onchange = () => { renderShapes(); renderPanelList(); };
+$('#thumbSize').oninput = e => {
+  $('#colPanels').style.flexBasis = Math.max(250, +e.target.value + 130) + 'px';
+  renderStage(); renderShapes(); renderPanelList();
+};
 $('#rtl').onchange = () => { const p = pages[cur]; if (p) { snap(); p.shapes = order(p.shapes); renderShapes(); renderPanelList(); } };
 $('#obl').onchange = () => redetectSoon();
 $('#lines').onchange = () => redetectSoon();
@@ -1208,7 +1419,7 @@ for (const id in live) {
   const [out, fmt] = live[id];
   $('#'+id).oninput = e => {
     $('#'+out).textContent = fmt(+e.target.value);
-    if (id !== 'sGrow') redetectSoon();
+    if (id !== 'sGrow') redetectSoon(); else { renderShapes(); renderPanelList(); }
   };
 }
 let redetectTimer;
