@@ -99,6 +99,8 @@
   #ov.prect{cursor:crosshair}
   .erasemark{fill:#fff;stroke:none;pointer-events:none}
   .rimmark{fill:rgba(76,141,255,.35);stroke:none;pointer-events:none}
+  .wpenmark{fill:none;stroke:#fff;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  #ov.wpen{cursor:crosshair}
   .rimundomark{fill:rgba(0,0,0,.55);stroke:none;pointer-events:none}
   .paintband{fill:rgba(0,0,0,.55);stroke:var(--accent);stroke-dasharray:6 4}
   .band{fill:rgba(76,141,255,.18);stroke:var(--accent);stroke-dasharray:6 4}
@@ -165,11 +167,10 @@
         <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
-        <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、そのまわりの<b>塗った黒だけ</b>を輪郭に沿って細く削り、白いフチにする（黒く塗ったまわりで輪郭が分からなくなるとき）。枠線や絵の黒は削らない。黒いフキダシは黒い所をクリック。赤い点＝形が見つからなかった</span></div>
         <div><span class="k">「白フチブラシ」</span><span>白く抜きたい所をなぞる。消えるのは、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけ（選択範囲の反転→拡張→反転と同じ）。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」</span></div>
         <div><span class="k">「白フチ消し」</span><span>なぞった所の白フチを消して、塗った黒に戻す（白フチブラシ中に <kbd>option</kbd>＋なぞっても同じ）。クリックで付けた白フチも消える</span></div>
-        <div><span class="k">「はみ出しに白フチ」</span><span>選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど。中が白でもトーンでもよい）に、まとめて白フチを付ける。いらないものは白フチの道具で option＋クリック</span></div>
-        <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
+        <div><span class="k">「白ペン」</span><span>なぞった所を白で塗る。枠線や絵の上からでも消せる。横の「太さ」で太さを変える</span></div>
+        <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。「大きさ」で大きさを変える。「やわらか」をオンにすると、ふちがぼけた消しゴムになり、重ねるほど濃く消える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
         <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
         <div><span class="k"><kbd>⌘Z</kbd></span><span>元に戻す</span></div>
@@ -208,15 +209,20 @@
       <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
       <span class="tgroup">
-        <button id="btnRim" class="mini" title="フキダシや花びらの中をクリックすると、まわりの塗った黒だけを輪郭に沿って細く削って、白いフチにする（黒いフキダシは黒い所をクリック。option＋クリックで取り消し）">白フチ</button>
         <button id="btnRimBrush" class="mini" title="なぞった所で、塗った黒のうち、塗っていない所（絵・花びら・フキダシ）から「太さ」以内のふちだけを削る。何度なぞっても、それより奥の黒は消えない。大きさは横の「ブラシ」">白フチブラシ</button>
         <button id="btnRimUndo" class="mini" title="なぞった所の白フチを消して、塗った黒に戻す（白フチブラシ中に option＋なぞっても同じ）">白フチ消し</button>
         <span class="tlabel">ブラシ</span><input type="range" id="rimBrushSize" min="3" max="60" value="14" style="width:56px" title="白フチブラシ・白フチ消しの大きさ">
-        <button id="btnAutoRim" class="mini" title="選んでいるコマの、塗った黒の中に島のように残ったもの（はみ出した花びらなど）に、まとめて白フチを付ける">はみ出しに白フチ</button>
         <span class="tlabel">太さ</span><input type="range" id="rimW" min="1" max="12" value="3" style="width:56px" title="白フチの太さ（プレビューのpx。書き出しでは原寸に合わせて太くなる）"><span class="tval" id="vRimW">3</span>
       </span>
-      <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
-      <span class="tlabel">大きさ</span><input type="range" id="eraseSize" min="4" max="60" value="14" style="width:56px" title="消しゴムの大きさ">
+      <span class="tgroup">
+        <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
+        <span class="tlabel">大きさ</span><input type="range" id="eraseSize" min="4" max="120" value="14" style="width:56px" title="消しゴムの大きさ">
+        <label class="ck" title="ふちがぼけた消しゴム。重ねるほど濃く消える"><input type="checkbox" id="eraseSoft"> やわらか</label>
+      </span>
+      <span class="tgroup">
+        <button id="btnWhitePen" class="mini" title="なぞった所を白で塗る（枠線や絵の上からでも消せる）">白ペン</button>
+        <span class="tlabel">太さ</span><input type="range" id="whiteW" min="1" max="40" value="4" style="width:56px" title="白ペンの太さ（画面のpx）"><span class="tval" id="vWhiteW">4</span>
+      </span>
       <button id="btnRect" class="mini">四角にする</button>
       <button id="btnDetect" class="mini">このページを再検出</button>
       <button id="btnClearShapes" class="mini warn">コマを全部消す</button>
@@ -813,12 +819,41 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
       g.putImageData(img, 0, 0);
     }
   }
-  if (man.erase.length) {
+  const hard = man.erase.filter(e => !e[3]), soft = man.erase.filter(e => e[3]);
+  if (hard.length) {
     g.save(); g.beginPath();
-    for (const [x, y, r] of man.erase) { g.moveTo(x-ox+r, y-oy); g.arc(x-ox, y-oy, r, 0, Math.PI*2); }
+    for (const [x, y, r] of hard) { g.moveTo(x-ox+r, y-oy); g.arc(x-ox, y-oy, r, 0, Math.PI*2); }
     g.clip();
     g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
     g.drawImage(src, ox, oy, cw, ch, 0, 0, cw, ch);
+    g.restore();
+  }
+  if (soft.length) {
+    // やわらかい消しゴム：ふちがぼけた丸を重ねた「濃さ」で、元の絵を重ねる（重ねるほど濃く消える）
+    const mk = document.createElement('canvas'); mk.width = cw; mk.height = ch;
+    const mg = mk.getContext('2d');
+    for (const [x, y, r] of soft) {
+      const gr = mg.createRadialGradient(x-ox, y-oy, 0, x-ox, y-oy, r);
+      gr.addColorStop(0, 'rgba(0,0,0,0.6)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      mg.fillStyle = gr; mg.fillRect(x-ox-r, y-oy-r, 2*r, 2*r);
+    }
+    const tmp = document.createElement('canvas'); tmp.width = cw; tmp.height = ch;
+    const tg = tmp.getContext('2d');
+    tg.fillStyle = '#fff'; tg.fillRect(0, 0, cw, ch);
+    tg.drawImage(src, ox, oy, cw, ch, 0, 0, cw, ch);
+    tg.globalCompositeOperation = 'destination-in'; tg.drawImage(mk, 0, 0);
+    g.drawImage(tmp, 0, 0);
+    mk.width = mk.height = tmp.width = tmp.height = 0;
+  }
+  // 白ペン：いちばん最後に、なぞった線を白で塗る
+  if (man.whitePen.length) {
+    g.save(); g.strokeStyle = '#fff'; g.lineCap = g.lineJoin = 'round';
+    for (const [r, pts] of man.whitePen) {
+      g.lineWidth = 2*r; g.beginPath();
+      pts.forEach((q, j) => j ? g.lineTo(q[0]-ox, q[1]-oy) : g.moveTo(q[0]-ox, q[1]-oy));
+      if (pts.length === 1) g.lineTo(pts[0][0]-ox + 0.01, pts[0][1]-oy);
+      g.stroke();
+    }
     g.restore();
   }
   return failed;
@@ -847,7 +882,7 @@ const protectPx = (p, s, W, H) => s.gut ? subPanels(p, s).map(P => P.map(q => [q
 /* 白フチではみ出しを見るときの壁：「枠外」のオン・オフに関係なく、コマの中のコマ（白フチがあるときだけ探す） */
 const rimBlockPx = (p, s, W, H) => (s.rims && s.rims.length) || s._findingRims ? subPanels(p, s).map(P => P.map(q => [q[0]*W, q[1]*H])) : [];
 
-const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length) || (s.rims && s.rims.length) || (s.rimStrokes && s.rimStrokes.length);
+const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length) || (s.rims && s.rims.length) || (s.rimStrokes && s.rimStrokes.length) || (s.whitePen && s.whitePen.length) || (s.erase && s.erase.length);
 const seedsPx = (s, W, H) => (s.seeds || []).map(q => [q[0]*W, q[1]*H]);
 /* 番号の若いコマが優先。あとのコマは、先のコマと重なっている所を塗る（同じ絵が2回出ることはないので）。
    境目で数pxだけ重なるのはよくある（幅はページいっぱいでも厚みは3pxほど）ので、
@@ -880,7 +915,8 @@ const manualPx = (list, W, H, p) => ({
   block: list.length === 1 ? rimBlockPx(p, list[0], W, H) : list.map(o => o.poly.map(q => [q[0]*W, q[1]*H])),
   blockPad: Math.max(2, Math.round(6 * W / p.pv.width)),
   pageW: W, pageH: H,
-  erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W])),
+  erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W, e[3] ? 1 : 0])),
+  whitePen: list.flatMap(s => (s.whitePen || []).map(([r, pts]) => [r*W, pts.map(q => [q[0]*W, q[1]*H])])),
   rimStrokes: list.flatMap(s => (s.rimStrokes || []).map(e => [e[0]*W, e[1]*H, e[2]*W, e[3] === 0 ? 0 : 1])),
 
 });
@@ -1702,16 +1738,21 @@ ov.addEventListener('pointerdown', e => {
     return sel >= 0 && inShape(p.shapes[sel]) ? sel : p.shapes.findIndex(inShape);
   };
   const onHandle = t.classList.contains('hv') || t.classList.contains('he');
-  if (!onHandle && (tool === 'erase' || tool === 'prect' || tool === 'rimbrush' || tool === 'rimundo')) {
+  if (!onHandle && (tool === 'erase' || tool === 'prect' || tool === 'rimbrush' || tool === 'rimundo' || tool === 'wpen')) {
     const i = hitShape(); if (i < 0) return;
     snap(); sel = i;
     const a = toSvg(n, p);
-    if (tool === 'erase' || tool === 'rimbrush' || tool === 'rimundo') {
+    if (tool === 'wpen') {
+      const r = +$('#whiteW').value * k / 2;
+      drag = { mode:'wpen', i, r: r / p.pv.width, pts: [[n[0], n[1]]],
+               el: addEl('polyline', { class:'wpenmark', points:`${a[0]},${a[1]}`, 'stroke-width': 2*r }) };
+    } else if (tool === 'erase' || tool === 'rimbrush' || tool === 'rimundo') {
       const isRim = tool !== 'erase';
       const r = +$(isRim ? '#rimBrushSize' : '#eraseSize').value * k;   // 画面上のpx → プレビューのpx
       const undoRim = tool === 'rimundo' || (tool === 'rimbrush' && e.altKey);
       const cls = !isRim ? 'erasemark' : undoRim ? 'rimundomark' : 'rimmark';
-      drag = { mode: isRim ? 'rimbrush' : 'erase', i, r: r / p.pv.width, pts: [[n[0], n[1]]], cls, carve: undoRim ? 0 : 1 };
+      drag = { mode: isRim ? 'rimbrush' : 'erase', i, r: r / p.pv.width, pts: [[n[0], n[1]]], cls, carve: undoRim ? 0 : 1,
+               soft: !isRim && $('#eraseSoft').checked ? 1 : 0 };
       addEl('circle', { class:cls, cx:a[0], cy:a[1], r });
     } else {
       drag = { mode:'prect', i, n0:n, el: addEl('rect', {class:'paintband', x:a[0], y:a[1], width:0, height:0, 'stroke-width':2*k}) };
@@ -1772,6 +1813,14 @@ ov.addEventListener('pointermove', e => {
   const p = pages[cur], n = ptN(e), W = p.pv.width, H = p.pv.height;
   const snapOn = $('#snapHV').checked;
 
+  if (drag.mode === 'wpen') {
+    const last = drag.pts[drag.pts.length - 1];
+    if (Math.hypot((n[0]-last[0])*W, (n[1]-last[1])*H) >= Math.max(1, drag.r * W * 0.3)) {
+      drag.pts.push([n[0], n[1]]);
+      drag.el.setAttribute('points', drag.pts.map(q => `${q[0]*W},${q[1]*H}`).join(' '));
+    }
+    return;
+  }
   if (drag.mode === 'erase' || drag.mode === 'rimbrush') {
     const last = drag.pts[drag.pts.length - 1];
     if (Math.hypot((n[0]-last[0])*W, (n[1]-last[1])*H) >= drag.r * W * 0.4) {
@@ -1821,9 +1870,13 @@ ov.addEventListener('pointerup', () => {
   if (!drag) return;
   const p = pages[cur];
 
-  if (drag.mode === 'erase' || drag.mode === 'rimbrush') {
+  if (drag.mode === 'wpen') {
+    drag.el.remove();
     const s = p.shapes[drag.i];
-    if (drag.mode === 'erase') s.erase = (s.erase || []).concat(drag.pts.map(q => [q[0], q[1], drag.r]));
+    (s.whitePen = s.whitePen || []).push([drag.r, drag.pts]);
+  } else if (drag.mode === 'erase' || drag.mode === 'rimbrush') {
+    const s = p.shapes[drag.i];
+    if (drag.mode === 'erase') s.erase = (s.erase || []).concat(drag.pts.map(q => [q[0], q[1], drag.r, drag.soft]));
     else s.rimStrokes = (s.rimStrokes || []).concat(drag.pts.map(q => [q[0], q[1], drag.r, drag.carve]));
   } else if (drag.mode === 'prect') {
     drag.el.remove();
@@ -1889,7 +1942,8 @@ function snap(){
   if (cur < 0) return;
   undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()), link: !!s.link, gut: !!s.gut, seeds: (s.seeds || []).map(q => q.slice()), rims: (s.rims || []).map(q => q.slice()),
     rects: (s.rects || []).map(q => q.slice()), erase: (s.erase || []).map(q => q.slice()),
-    rimStrokes: (s.rimStrokes || []).map(q => q.slice()) })) });
+    rimStrokes: (s.rimStrokes || []).map(q => q.slice()),
+    whitePen: (s.whitePen || []).map(([r, pts]) => [r, pts.map(q => q.slice())]) })) });
   if (undoStack.length > 60) undoStack.shift();
 }
 function undo(){
@@ -2069,10 +2123,10 @@ $('#btnExport').onclick = exportAll;
 /* 道具の切り替え。同じボタンをもう一度押すか Esc で、ふつうの操作（選ぶ・動かす）に戻る */
 function setTool(t){
   tool = (t === null || tool === t) ? null : t;
-  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRim','rim'],['btnRimBrush','rimbrush'],['btnRimUndo','rimundo']])
+  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRimBrush','rimbrush'],['btnRimUndo','rimundo'],['btnWhitePen','wpen']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
-  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える。option＋なぞると戻す）', rimundo:'白フチ消し：なぞった所の白フチを消して黒に戻す' }[tool];
+  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ：輪郭を浮かせたいフキダシの中をクリック（黒いフキダシは黒い所）', rimbrush:'白フチブラシ：白く抜きたい所をなぞる（塗った黒のふち「太さ」ぶんだけ消える。option＋なぞると戻す）', rimundo:'白フチ消し：なぞった所の白フチを消して黒に戻す', wpen:'白ペン：なぞった所を白で塗る' }[tool];
   $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
   $('#toolHint').style.display = label ? 'block' : 'none';
 }
@@ -2080,24 +2134,10 @@ $('#btnSplit').onclick = () => setTool('split');
 $('#btnBucket').onclick = () => setTool('bucket');
 $('#btnErase').onclick = () => setTool('erase');
 $('#btnPaintRect').onclick = () => setTool('prect');
-$('#btnRim').onclick = () => setTool('rim');
+$('#btnWhitePen').onclick = () => setTool('wpen');
+$('#whiteW').oninput = e => { $('#vWhiteW').textContent = e.target.value; };
 $('#btnRimBrush').onclick = () => setTool('rimbrush');
 $('#btnRimUndo').onclick = () => setTool('rimundo');
-$('#btnAutoRim').onclick = () => {
-  const p = pages[cur];
-  if (!p || sel < 0) { alert('先に、白フチを付けたいコマを選んでください'); return; }
-  const s = p.shapes[sel];
-  if (!needsPaint(p, s)) { alert('このコマはまだ塗っていません。先に「枠外」やバケツで塗ってください'); return; }
-  busy(true, 'はみ出したものをさがしています…');
-  setTimeout(() => {
-    const found = findRimTargets(p, s);
-    const W = p.pv.width, H = p.pv.height;
-    const fresh = found.filter(q => !(s.rims || []).some(e => Math.hypot((e[0]-q[0])*W, (e[1]-q[1])*H) < 6));
-    if (fresh.length) { snap(); s.rims = (s.rims || []).concat(fresh); }
-    renderShapes(); renderPanelList(); busy(false);
-    if (!fresh.length) alert('白フチを付けるものが見つかりませんでした');
-  }, 30);
-};
 $('#rimW').oninput = e => { $('#vRimW').textContent = e.target.value; renderShapes(); renderPanelList(); };
 $('#btnRect').onclick = () => {
   const p = pages[cur]; if (!p || sel < 0) return;
