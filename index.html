@@ -89,6 +89,8 @@
   .hm{fill:#fff;stroke:var(--accent)}
   .cutprev{fill:none;stroke:#ff4d8d;stroke-dasharray:5 4;pointer-events:none}
   .seed{fill:#ffb020;stroke:#000}
+  .rimseed{fill:#fff;stroke:var(--accent)}
+  .rimseed.bad{fill:#ff4d4d;stroke:#fff}
   #ov.bucket{cursor:copy}
   #ov.erase{cursor:cell}
   #ov.prect{cursor:crosshair}
@@ -154,9 +156,10 @@
         <div><span class="k">辺をダブルクリック</span><span>角を1つ増やす</span></div>
         <div><span class="k"><kbd>option</kbd>＋○</span><span>その角を消す</span></div>
         <div><span class="k">「線で割る」</span><span>コマを横切るように線を引くと、その線で2つに割れる</span></div>
-        <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）だけを塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
+        <div><span class="k">右の列の「枠外」</span><span>そのコマの中の、枠線の外の白（余白・溝）と、ほかのコマと重なっている所を塗る。セリフがまたいで分けられないコマ用。枠の中やフキダシの中の白は残す</span></div>
         <div><span class="k">「バケツ」</span><span>コマの中の白い所をクリックすると、そこを塗る（枠外を塗っても閉じていて残った溝など）。<kbd>option</kbd>＋クリックで取り消し</span></div>
         <div><span class="k">「四角で塗る」</span><span>ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）</span></div>
+        <div><span class="k">「白フチ」</span><span>フキダシの中をクリックすると、まわりに白いフチを付ける（黒く塗ったまわりで輪郭が分からなくなるとき）。黒いフキダシもOK。赤い点＝形が見つからなかった</span></div>
         <div><span class="k">「消しゴム」</span><span>なぞった所は塗らない（元の絵に戻す）。右の丸で大きさを変える</span></div>
         <div><span class="k">右の列の ⛓</span><span>次のコマとつなげて1枚で書き出す（セリフがコマをまたぐとき）。コマの外の白は「コマ外の塗り」で塗り、フキダシの中の白は残す。「全部つなげる」でページ丸ごと</span></div>
         <div><span class="k"><kbd>delete</kbd></span><span>選んだコマを消す</span></div>
@@ -195,6 +198,7 @@
       <button id="btnSplit" class="mini">線で割る</button>
       <button id="btnBucket" class="mini" title="コマの中の白い所をクリックすると、そこを「コマ外の塗り」で塗る（option＋クリックで取り消し）">バケツ</button>
       <button id="btnPaintRect" class="mini" title="ドラッグした四角をそのまま塗る（トーンがあってバケツが効かない所に）">四角で塗る</button>
+      <button id="btnRim" class="mini" title="フキダシの中をクリックすると、まわりに白いフチを付ける（黒いフキダシもOK。option＋クリックで取り消し）">白フチ</button>
       <button id="btnErase" class="mini" title="なぞった所は塗らない（元の絵に戻す）">消しゴム</button>
       <input type="range" id="eraseSize" min="4" max="60" value="14" style="width:60px" title="消しゴムの大きさ">
       <button id="btnRect" class="mini">四角にする</button>
@@ -237,6 +241,7 @@
       <div class="row" title="コマの枠線のどこで切り抜くか"><span>切る位置</span>
         <select id="cutPos" style="flex:1"><option value="in" selected>枠線の内側（線を含めない）</option><option value="mid">枠線の中央</option><option value="out">枠線の外側（線を含める）</option></select>
       </div>
+      <div class="row" title="白フチの道具で付ける白い帯の太さ（プレビューのpx。書き出しでは原寸に合わせて太くなる）"><span>白フチの太さ</span><input type="range" id="rimW" min="1" max="12" value="3"><span class="v" id="vRimW">3</span></div>
       <div class="row"><span>コマ外の塗り</span>
         <select id="fill" style="flex:1"><option value="#000000">黒</option><option value="#ffffff">白</option><option value="none">透明（PNGのみ）</option></select>
       </div>
@@ -531,18 +536,63 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
   // 見つからないときは黒＝壁（断ち切りの絵へ、ページの外から入り込まないように）
   g.fillStyle = protect.length ? '#fff' : '#000'; g.fillRect(0, 0, E.width, E.height);
   g.drawImage(src, x - m, y - m, E.width, E.height, 0, 0, E.width, E.height);
+  const orig = man && man.rims.length ? g.getImageData(0, 0, E.width, E.height) : null;
   paintGutters(g, E.width, E.height, protect.map(P => P.map(q => [q[0] - x + m, q[1] - y + m])), r, fill, !!edges, seeds.map(([sx, sy]) => [sx - x + m, sy - y + m]));
-  applyManual(g, x - m, y - m, src, man, fill);
+  E.rimFailed = applyManual(g, x - m, y - m, src, man, fill, orig, r);
   return E;
 }
-/* 手で足した塗り：四角で塗る（rects）→ 最後に消しゴム（erase）で元の絵に戻す。座標はページのpx。
-   g のキャンバスの (0,0) が、ページの (ox,oy) */
-function applyManual(g, ox, oy, src, man, fill){
-  if (!man) return;
+
+/* 白フチ：クリックした所から、フキダシ（や黒いフキダシ）の形をたどって、まわりに白い帯を描くための帯の形を返す。
+   od は塗る前の絵。形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
+function rimHalo(od, w, h, sx, sy, r, rimW){
+  const N = w*h, d = od.data, X = Math.round(sx), Y = Math.round(sy);
+  if (X < 0 || Y < 0 || X >= w || Y >= h) return null;
+  const lum = i => (d[i*4]*299 + d[i*4+1]*587 + d[i*4+2]*114) / 1000;
+  const white = lum(Y*w + X) >= 128;                 // 白いフキダシの中をクリックしたか、黒いフキダシか
+  const base = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { const v = lum(i); base[i] = white ? (v >= 200 ? 1 : 0) : (v < 128 ? 1 : 0); }
+  let pass = base;
+  if (white) {                                        // 輪郭のすき間から漏れないよう、黒を少し太らせてからたどる
+    const dk = new Uint8Array(N); for (let i = 0; i < N; i++) dk[i] = base[i] ? 0 : 1;
+    const wall = dilateMask(dk, w, h, r);
+    pass = new Uint8Array(N); for (let i = 0; i < N; i++) pass[i] = base[i] && !wall[i] ? 1 : 0;
+  }
+  const reg = floodFrom(pass, w, h, false, [[sx, sy]], 3*r + 2);
+  let area = 0; for (let i = 0; i < N; i++) area += reg[i];
+  if (!area || area > 0.3 * N) return null;
+  // 中の文字などの穴を埋める：外からたどれなかった所＝形の中
+  const rest = new Uint8Array(N); for (let i = 0; i < N; i++) rest[i] = reg[i] ? 0 : 1;
+  const outside = floodFrom(rest, w, h, true, [], 0);
+  let shape = new Uint8Array(N); for (let i = 0; i < N; i++) shape[i] = outside[i] ? 0 : 1;
+  if (white) shape = dilateMask(shape, w, h, 2*r + 1);   // 太らせた分と、輪郭線まで含める
+  const grown = dilateMask(shape, w, h, rimW);
+  const halo = new Uint8Array(N); for (let i = 0; i < N; i++) halo[i] = grown[i] && !shape[i] ? 1 : 0;
+  return halo;
+}
+/* 手で足した塗り。座標はページのpx。g のキャンバスの (0,0) が、ページの (ox,oy)。
+   ほかのコマとの重なり（polys）→ 四角で塗る（rects）→ 白フチ（rims）→ 最後に消しゴム（erase）で元の絵に戻す。
+   返り値：形が見つからなかった白フチの番号 */
+function applyManual(g, ox, oy, src, man, fill, orig, r){
+  const failed = [];
+  if (!man) return failed;
   const cw = g.canvas.width, ch = g.canvas.height;
+  for (const P of man.polys) {
+    g.beginPath(); P.forEach((q, j) => j ? g.lineTo(q[0]-ox, q[1]-oy) : g.moveTo(q[0]-ox, q[1]-oy)); g.closePath();
+    if (fill === 'none') { g.save(); g.clip(); g.clearRect(0, 0, cw, ch); g.restore(); }
+    else { g.fillStyle = fill; g.fill(); }
+  }
   for (const [x1, y1, x2, y2] of man.rects) {
     if (fill === 'none') g.clearRect(x1-ox, y1-oy, x2-x1, y2-y1);
     else { g.fillStyle = fill; g.fillRect(x1-ox, y1-oy, x2-x1, y2-y1); }
+  }
+  if (man.rims.length && orig) {
+    const img = g.getImageData(0, 0, cw, ch), d = img.data;
+    man.rims.forEach(([x, y], k) => {
+      const halo = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
+      if (!halo) { failed.push(k); return; }
+      for (let i = 0, p = 0; i < halo.length; i++, p += 4) if (halo[i]) { d[p] = d[p+1] = d[p+2] = 255; d[p+3] = 255; }
+    });
+    g.putImageData(img, 0, 0);
   }
   if (man.erase.length) {
     g.save(); g.beginPath();
@@ -552,6 +602,7 @@ function applyManual(g, ox, oy, src, man, fill){
     g.drawImage(src, ox, oy, cw, ch, 0, 0, cw, ch);
     g.restore();
   }
+  return failed;
 }
 /* 「枠外」のコマの中で自動検出をもう一度走らせて、中にあるコマ（守る所）を見つける。ページ比の座標 */
 function subPanels(p, s){
@@ -575,10 +626,14 @@ function subPanels(p, s){
 }
 const protectPx = (p, s, W, H) => s.gut ? subPanels(p, s).map(P => P.map(q => [q[0]*W, q[1]*H])) : [];
 
-const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length);
+const painted = s => s.gut || (s.seeds && s.seeds.length) || (s.rects && s.rects.length) || (s.rims && s.rims.length);
 const seedsPx = (s, W, H) => (s.seeds || []).map(q => [q[0]*W, q[1]*H]);
-const manualPx = (list, W, H) => ({
+/* overlap：ほかのコマと重なっている所も塗る（「枠外」のコマと、つないだコマ） */
+const manualPx = (list, W, H, p, overlap) => ({
+  polys: overlap ? p.shapes.filter(o => !list.includes(o)).map(o => o.poly.map(q => [q[0]*W, q[1]*H])) : [],
   rects: list.flatMap(s => (s.rects || []).map(r => [r[0]*W, r[1]*H, r[2]*W, r[3]*H])),
+  rims:  list.flatMap(s => (s.rims || []).map(q => [q[0]*W, q[1]*H])),
+  rimW:  Math.max(1, Math.round(+$('#rimW').value * W / p.pv.width)),
   erase: list.flatMap(s => (s.erase || []).map(e => [e[0]*W, e[1]*H, e[2]*W]))
 });
 
@@ -587,9 +642,11 @@ function paintedPreview(p, s){
   const poly = shapeCutPx(p, s), bb = polyBBox(poly), fill = $('#fill').value;
   const x = Math.round(bb.x1), y = Math.round(bb.y1), w = Math.max(1, Math.round(bb.w)), h = Math.max(1, Math.round(bb.h));
   const prot = protectPx(p, s, p.pv.width, p.pv.height);
-  const key = JSON.stringify([poly, s.seeds || [], !!s.gut, fill, s.rects || [], s.erase || [], prot]);
+  const man = manualPx([s], p.pv.width, p.pv.height, p, !!s.gut);
+  const key = JSON.stringify([poly, s.seeds || [], !!s.gut, fill, prot, man]);
   if (!s._gut || s._gut.key !== key) {
-    const img = gutterPainted(p.pv, x, y, w, h, 8, 1, fill, !!s.gut, seedsPx(s, p.pv.width, p.pv.height), manualPx([s], p.pv.width, p.pv.height), prot);
+    const img = gutterPainted(p.pv, x, y, w, h, 8, 1, fill, !!s.gut, seedsPx(s, p.pv.width, p.pv.height), man, prot);
+    s._rimFailed = img.rimFailed;
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     c.getContext('2d').drawImage(img, 8, 8, w, h, 0, 0, w, h);
     s._gut = { key, img, url: c.toDataURL(), x, y, w, h };
@@ -1174,6 +1231,10 @@ function renderShapes(){
   p.shapes.forEach(s => (s.seeds || []).forEach(q => {
     h += `<circle class="seed" cx="${q[0]*W}" cy="${q[1]*H}" r="${5*k}" stroke-width="${2*k}" pointer-events="none"/>`;
   }));
+  p.shapes.forEach(s => (s.rims || []).forEach((q, j) => {
+    const bad = (s._rimFailed || []).includes(j);
+    h += `<circle class="rimseed${bad ? ' bad' : ''}" cx="${q[0]*W}" cy="${q[1]*H}" r="${5*k}" stroke-width="${2*k}" pointer-events="none"><title>${bad ? 'フキダシの形が見つかりませんでした（輪郭のすき間から外へ漏れた）' : '白フチ'}</title></circle>`;
+  }));
   if (sel >= 0 && p.shapes[sel]) {
     const P = toPx(p.shapes[sel].poly, p);
     // 辺（つかむと平行に動く）。当たり判定は太い透明の線、目印に中点の小さな四角
@@ -1234,7 +1295,8 @@ function panelCanvas(p, s, maxW, maxH){
 /* つないだコマの見本（プレビューの解像度で塗ってから縮める） */
 function groupCanvas(p, idx, maxW, maxH){
   const polys = idx.map(i => shapeCutPx(p, p.shapes[i]));
-  const key = JSON.stringify([polys, idx.map(i => [p.shapes[i].seeds || [], p.shapes[i].rects || [], p.shapes[i].erase || []])]) + $('#fill').value;
+  const man = manualPx(idx.map(i => p.shapes[i]), p.pv.width, p.pv.height, p, true);
+  const key = JSON.stringify([polys, idx.map(i => p.shapes[i].seeds || []), man]) + $('#fill').value;
   p._gc = p._gc || {};
   let src = p._gc[key];
   if (!src) {
@@ -1243,9 +1305,10 @@ function groupCanvas(p, idx, maxW, maxH){
     src = document.createElement('canvas'); src.width = w; src.height = h;
     const g = src.getContext('2d');
     g.drawImage(p.pv, x, y, w, h, 0, 0, w, h);
+    const orig = man.rims.length ? g.getImageData(0, 0, w, h) : null;
     const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.pv.width, p.pv.height)).map(q => [q[0]-x, q[1]-y]);
     paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), 1, $('#fill').value, true, seeds);
-    applyManual(g, x, y, p.pv, manualPx(idx.map(i => p.shapes[i]), p.pv.width, p.pv.height), $('#fill').value);
+    applyManual(g, x, y, p.pv, man, $('#fill').value, orig, 1);
     p._gc = { [key]: src };                             // 最新の1枚だけ持つ
   }
   const k = Math.min(maxW/src.width, maxH/src.height), dpr = window.devicePixelRatio || 1;
@@ -1397,8 +1460,10 @@ ov.addEventListener('pointerdown', e => {
     ov.setPointerCapture(e.pointerId); e.preventDefault();
     return;
   }
-  if (!onHandle && tool === 'bucket') {
-    // クリックした点を含むコマ（選んでいるコマを優先）に、塗り始めの点を足す。option＋クリックで近くの点を消す
+  if (!onHandle && (tool === 'bucket' || tool === 'rim')) {
+    // クリックした点を含むコマ（選んでいるコマを優先）に点を足す。option＋クリックで近くの点を消す
+    // バケツ：塗り始めの点（seeds）／白フチ：フキダシの中の点（rims）
+    const key = tool === 'bucket' ? 'seeds' : 'rims';
     const P = toSvg(n, p);
     const inShape = s => pointInPoly(P[0], P[1], toPx(s.poly, p));
     const i = sel >= 0 && inShape(p.shapes[sel]) ? sel : p.shapes.findIndex(inShape);
@@ -1407,8 +1472,8 @@ ov.addEventListener('pointerdown', e => {
     snap();
     if (e.altKey) {
       const T = 12 * k;
-      s.seeds = (s.seeds || []).filter(q => Math.hypot(q[0]*p.pv.width - P[0], q[1]*p.pv.height - P[1]) > T);
-    } else (s.seeds = s.seeds || []).push([n[0], n[1]]);
+      s[key] = (s[key] || []).filter(q => Math.hypot(q[0]*p.pv.width - P[0], q[1]*p.pv.height - P[1]) > T);
+    } else (s[key] = s[key] || []).push([n[0], n[1]]);
     sel = i; setTool(null); renderShapes(); renderPanelList();   // 1回使ったら、選ぶ・動かすに戻る
     return;
   }
@@ -1562,7 +1627,7 @@ ov.addEventListener('dblclick', e => {
 
 function snap(){
   if (cur < 0) return;
-  undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()), link: !!s.link, gut: !!s.gut, seeds: (s.seeds || []).map(q => q.slice()),
+  undoStack.push({ i: cur, shapes: pages[cur].shapes.map(s => ({ poly: s.poly.map(p => p.slice()), link: !!s.link, gut: !!s.gut, seeds: (s.seeds || []).map(q => q.slice()), rims: (s.rims || []).map(q => q.slice()),
     rects: (s.rects || []).map(q => q.slice()), erase: (s.erase || []).map(q => q.slice()) })) });
   if (undoStack.length > 60) undoStack.shift();
 }
@@ -1596,7 +1661,7 @@ async function cropBlob(full, p, s, o, dark){
   }
   if (painted(s)) {
     const unit = p.W / p.pv.width, m = Math.round(8 * unit);
-    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H), manualPx([s], p.W, p.H), protectPx(p, s, p.W, p.H));
+    const E = gutterPainted(full, x, y, w, h, m, Math.max(1, Math.round(1.2 * unit)), fill, !!s.gut, seedsPx(s, p.W, p.H), manualPx([s], p.W, p.H, p, !!s.gut), protectPx(p, s, p.W, p.H));
     g.drawImage(E, m, m, w, h, 0, 0, w, h);
     E.width = E.height = 0;
   } else g.drawImage(full, x, y, w, h, 0, 0, w, h);
@@ -1619,9 +1684,11 @@ async function cropGroupBlob(full, p, idx, o, dark){
   if (fill === 'none' && ext() === 'jpg') fill = '#ffffff';
   g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
   g.drawImage(full, x, y, w, h, 0, 0, w, h);
+  const man = manualPx(idx.map(i => p.shapes[i]), p.W, p.H, p, true), rr = Math.max(1, Math.round(1.2 * unit));
+  const orig = man.rims.length ? g.getImageData(0, 0, w, h) : null;
   const seeds = idx.flatMap(i => seedsPx(p.shapes[i], p.W, p.H)).map(q => [q[0]-x, q[1]-y]);
-  paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), Math.max(1, Math.round(1.2 * unit)), fill, true, seeds);
-  applyManual(g, x, y, full, manualPx(idx.map(i => p.shapes[i]), p.W, p.H), fill);
+  paintGutters(g, w, h, polys.map(P => P.map(q => [q[0]-x, q[1]-y])), rr, fill, true, seeds);
+  applyManual(g, x, y, full, man, fill, orig, rr);
   const q = +$('#quality').value / 100;
   const blob = await new Promise(res => c.toBlob(res, ext() === 'jpg' ? 'image/jpeg' : 'image/png', q));
   c.width = c.height = 0;
@@ -1741,10 +1808,10 @@ $('#btnExport').onclick = exportAll;
 /* 道具の切り替え。同じボタンをもう一度押すか Esc で、ふつうの操作（選ぶ・動かす）に戻る */
 function setTool(t){
   tool = (t === null || tool === t) ? null : t;
-  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect']])
+  for (const [id, name] of [['btnSplit','split'],['btnBucket','bucket'],['btnErase','erase'],['btnPaintRect','prect'],['btnRim','rim']])
     $('#'+id).classList.toggle('on', tool === name);
   ov.setAttribute('class', tool || '');
-  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る' }[tool];
+  const label = { split:'線で割る', bucket:'バケツ', erase:'消しゴム', prect:'四角で塗る', rim:'白フチ（フキダシの中をクリック）' }[tool];
   $('#toolHint').textContent = label ? `${label}中 ― Esc かもう一度ボタンで、選ぶ・動かすに戻ります` : '';
   $('#toolHint').style.display = label ? 'block' : 'none';
 }
@@ -1752,6 +1819,8 @@ $('#btnSplit').onclick = () => setTool('split');
 $('#btnBucket').onclick = () => setTool('bucket');
 $('#btnErase').onclick = () => setTool('erase');
 $('#btnPaintRect').onclick = () => setTool('prect');
+$('#btnRim').onclick = () => setTool('rim');
+$('#rimW').oninput = e => { $('#vRimW').textContent = e.target.value; renderShapes(); renderPanelList(); };
 $('#btnRect').onclick = () => {
   const p = pages[cur]; if (!p || sel < 0) return;
   snap();
