@@ -545,31 +545,55 @@ function gutterPainted(src, x, y, w, h, m, r, fill, edges, seeds, man, protect =
 }
 
 /* 白フチ：クリックした所から、フキダシ（や黒いフキダシ）の形をたどって、そのまわりの帯（削る所）を返す。
-   od は塗る前の絵。形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
-function rimHalo(od, w, h, sx, sy, r, rimW){
-  const N = w*h, d = od.data, X = Math.round(sx), Y = Math.round(sy);
-  if (X < 0 || Y < 0 || X >= w || Y >= h) return null;
+   od は塗る前の絵。返り値は { x0, y0, w, h, halo }（フキダシのまわりだけの窓）。
+   形が大きすぎる（輪郭のすき間から外へ漏れた）ときは null */
+function rimHalo(od, W, H, sx, sy, r, rimW){
+  const N = W*H, d = od.data, X = Math.round(sx), Y = Math.round(sy);
+  if (X < 0 || Y < 0 || X >= W || Y >= H) return null;
   const lum = i => (d[i*4]*299 + d[i*4+1]*587 + d[i*4+2]*114) / 1000;
-  const white = lum(Y*w + X) >= 128;                 // 白いフキダシの中をクリックしたか、黒いフキダシか
+  const white = lum(Y*W + X) >= 128;                 // 白いフキダシの中をクリックしたか、黒いフキダシか
+  // 1) クリックした所から中をたどる（白いフキダシは、輪郭のすき間から漏れないよう黒を少し太らせて）
   const base = new Uint8Array(N);
   for (let i = 0; i < N; i++) { const v = lum(i); base[i] = white ? (v >= 200 ? 1 : 0) : (v < 128 ? 1 : 0); }
   let pass = base;
-  if (white) {                                        // 輪郭のすき間から漏れないよう、黒を少し太らせてからたどる
+  if (white) {
     const dk = new Uint8Array(N); for (let i = 0; i < N; i++) dk[i] = base[i] ? 0 : 1;
-    const wall = dilateMask(dk, w, h, r);
+    const wall = dilateMask(dk, W, H, r);
     pass = new Uint8Array(N); for (let i = 0; i < N; i++) pass[i] = base[i] && !wall[i] ? 1 : 0;
   }
-  const reg = floodFrom(pass, w, h, false, [[sx, sy]], 3*r + 2);
-  let area = 0; for (let i = 0; i < N; i++) area += reg[i];
-  if (!area || area > 0.3 * N) return null;
-  // 中の文字などの穴を埋める：外からたどれなかった所＝形の中
-  const rest = new Uint8Array(N); for (let i = 0; i < N; i++) rest[i] = reg[i] ? 0 : 1;
+  const reg = floodFrom(pass, W, H, false, [[sx, sy]], 3*r + 2);
+  let area = 0, bx1 = W, by1 = H, bx2 = 0, by2 = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (reg[y*W + x]) {
+    area++; if (x < bx1) bx1 = x; if (x > bx2) bx2 = x; if (y < by1) by1 = y; if (y > by2) by2 = y;
+  }
+  // 漏れの判定：形が全体の60%を超えるか、3辺以上に接している（外へ漏れて広がった）
+  const sides = (bx1 === 0) + (by1 === 0) + (bx2 === W-1) + (by2 === H-1);
+  if (!area || area > 0.6 * N || sides >= 3) return null;
+  // 2) ここからはフキダシのまわりの窓だけで計算する
+  const K = 6*r + 4, pad = r + K + rimW + 2;
+  const x0 = Math.max(0, bx1 - pad), y0 = Math.max(0, by1 - pad), x1 = Math.min(W, bx2 + pad + 1), y1 = Math.min(H, by2 + pad + 1);
+  const w = x1 - x0, h = y1 - y0, n = w*h;
+  const R = new Uint8Array(n), dark = new Uint8Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const gi = (y + y0)*W + (x + x0);
+    R[y*w + x] = reg[gi]; dark[y*w + x] = lum(gi) < 200 ? 1 : 0;
+  }
+  // 中の文字などの穴を埋める：窓の外からたどれなかった所＝形の中
+  const rest = new Uint8Array(n); for (let i = 0; i < n; i++) rest[i] = R[i] ? 0 : 1;
   const outside = floodFrom(rest, w, h, true, [], 0);
-  let shape = new Uint8Array(N); for (let i = 0; i < N; i++) shape[i] = outside[i] ? 0 : 1;
-  if (white) shape = dilateMask(shape, w, h, 2*r + 1);   // 太らせた分と、輪郭線まで含める
+  let shape = new Uint8Array(n); for (let i = 0; i < n; i++) shape[i] = outside[i] ? 0 : 1;
+  if (white) shape = dilateMask(shape, w, h, r);     // 太らせた壁の分を戻す
+  // 3) 輪郭線を最後までたどる：形のとなりの「元の絵の黒」へ、1pxずつ広げる（K px まで）
+  for (let t = 0; t < K; t++) {
+    const g1 = dilateMask(shape, w, h, 1);
+    let grew = false;
+    for (let i = 0; i < n; i++) if (g1[i] && !shape[i] && dark[i]) { shape[i] = 1; grew = true; }
+    if (!grew) break;
+  }
+  // 4) その外側 rimW px が、削る帯
   const grown = dilateMask(shape, w, h, rimW);
-  const halo = new Uint8Array(N); for (let i = 0; i < N; i++) halo[i] = grown[i] && !shape[i] ? 1 : 0;
-  return halo;
+  const halo = new Uint8Array(n); for (let i = 0; i < n; i++) halo[i] = grown[i] && !shape[i] ? 1 : 0;
+  return { x0, y0, w, h, halo };
 }
 /* 手で足した塗り。座標はページのpx。g のキャンバスの (0,0) が、ページの (ox,oy)。
    ほかのコマとの重なり（polys）→ 四角で塗る（rects）→ 白フチ（rims）→ 最後に消しゴム（erase）で元の絵に戻す。
@@ -592,12 +616,15 @@ function applyManual(g, ox, oy, src, man, fill, orig, r){
   if (man.rims.length && orig) {
     const img = g.getImageData(0, 0, cw, ch), d = img.data, od = orig.data;
     man.rims.forEach(([x, y], k) => {
-      const halo = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
-      if (!halo) { failed.push(k); return; }
-      for (let i = 0, p = 0; i < halo.length; i++, p += 4)
-        if (halo[i] && (d[p] !== od[p] || d[p+1] !== od[p+1] || d[p+2] !== od[p+2] || d[p+3] !== od[p+3])) {
+      const rh = rimHalo(orig, cw, ch, x - ox, y - oy, r, man.rimW);
+      if (!rh) { failed.push(k); return; }
+      for (let yy = 0; yy < rh.h; yy++) for (let xx = 0; xx < rh.w; xx++) {
+        if (!rh.halo[yy*rh.w + xx]) continue;
+        const p = ((yy + rh.y0)*cw + (xx + rh.x0)) * 4;
+        if (d[p] !== od[p] || d[p+1] !== od[p+1] || d[p+2] !== od[p+2] || d[p+3] !== od[p+3]) {
           d[p] = od[p]; d[p+1] = od[p+1]; d[p+2] = od[p+2]; d[p+3] = od[p+3];
         }
+      }
     });
     g.putImageData(img, 0, 0);
   }
